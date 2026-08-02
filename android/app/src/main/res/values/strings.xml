@@ -1,0 +1,4 @@
+<resources>
+  <string name="app_name">Nya 记账</string>
+  <string name="accessibility_service_description">用于从通知栏截取当前页面并生成记账草稿，不读取页面文字或操作页面。</string>
+</resources>

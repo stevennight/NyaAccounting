@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts } from 'expo-font';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AppState,
   ActivityIndicator,
   StyleSheet,
   Text,
@@ -25,6 +26,10 @@ import { RecurringExpensesScreen } from './src/screens/RecurringExpensesScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
 import { TransactionEditScreen } from './src/screens/TransactionEditScreen';
+import {
+  consumePendingScreenCapture,
+  consumePendingScreenCaptureError,
+} from './src/services';
 import { useHardwareBack } from './src/hooks/useHardwareBack';
 import {
   AppStoreProvider,
@@ -50,7 +55,45 @@ function AppContent() {
   const [routes, setRoutes] = useState<AppRoute[]>([
     { type: 'tab', tab: 'home' },
   ]);
+  const [pendingScreenshotUri, setPendingScreenshotUri] = useState<string | null>(null);
+  const [pendingScreenshotError, setPendingScreenshotError] = useState<string | null>(null);
+  const clearPendingScreenshot = useCallback(() => {
+    setPendingScreenshotUri(null);
+    setPendingScreenshotError(null);
+  }, []);
   const currentRoute = routes[routes.length - 1];
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    let active = true;
+    const consumePendingCapture = () => Promise.all([
+      consumePendingScreenCapture().catch(() => null),
+      consumePendingScreenCaptureError().catch(() => null),
+    ]).then(([uri, error]) => {
+      if (!active || (!uri && !error)) {
+        return;
+      }
+      setPendingScreenshotUri(uri);
+      setPendingScreenshotError(error);
+      setRoutes((current) =>
+        current.some((route) => route.type === 'capture')
+          ? current
+          : [...current, { type: 'capture' }],
+      );
+    });
+    void consumePendingCapture();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void consumePendingCapture();
+      }
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [hydrated]);
   const activeTab =
     [...routes]
       .reverse()
@@ -198,6 +241,9 @@ function AppContent() {
         theme={theme}
         onSaved={goBack}
         onCancel={goBack}
+        initialScreenshotUri={pendingScreenshotUri}
+        initialScreenshotError={pendingScreenshotError}
+        onInitialScreenshotConsumed={clearPendingScreenshot}
       />
     );
   } else {

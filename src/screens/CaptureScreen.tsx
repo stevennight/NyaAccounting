@@ -14,6 +14,7 @@ import {
   Image,
   Linking,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -83,6 +84,9 @@ export type CaptureScreenProps = {
   theme: AppTheme;
   onSaved?: (transaction: Transaction) => void;
   onCancel?: () => void;
+  initialScreenshotUri?: string | null;
+  initialScreenshotError?: string | null;
+  onInitialScreenshotConsumed?: () => void;
 };
 
 type Notice = {
@@ -94,6 +98,19 @@ type VoiceCapture = {
   uri: string;
   fileName: string;
   mimeType: string;
+};
+
+type CaptureImage = {
+  id: string;
+  asset: ImagePicker.ImagePickerAsset;
+  text: string;
+};
+
+type ReviewQueueItem = {
+  id: string;
+  asset?: ImagePicker.ImagePickerAsset;
+  draft: TransactionDraft | null;
+  error?: string;
 };
 
 type PermissionNotice = {
@@ -331,17 +348,19 @@ export function CaptureScreen({
   theme,
   onSaved,
   onCancel,
+  initialScreenshotUri,
+  initialScreenshotError,
+  onInitialScreenshotConsumed,
 }: CaptureScreenProps) {
   const { dataset, addTransaction } = useAppStore();
   const settings = dataset.settings;
-  const [imageAsset, setImageAsset] =
-    useState<ImagePicker.ImagePickerAsset | null>(null);
-  const [preparedScreenshot, setPreparedScreenshot] =
-    useState<PreparedScreenshot | null>(null);
+  const [imageItems, setImageItems] = useState<CaptureImage[]>([]);
+  const [activeImageId, setActiveImageId] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
   const [voiceCapture, setVoiceCapture] = useState<VoiceCapture | null>(null);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [draft, setDraft] = useState<TransactionDraft | null>(null);
+  const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([]);
   const [amountInput, setAmountInput] = useState('');
   const [timeInput, setTimeInput] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -360,27 +379,13 @@ export function CaptureScreen({
   const recordingWasActiveRef = useRef(false);
   const mountedRef = useRef(true);
   const leavingRef = useRef(false);
-  const preparedScreenshotRef = useRef<PreparedScreenshot | null>(null);
   const voiceCaptureRef = useRef<VoiceCapture | null>(null);
+  const initialScreenshotLoadedRef = useRef<string | null>(null);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder, 250);
   const audioRecorderRef = useRef(audioRecorder);
   audioRecorderRef.current = audioRecorder;
-
-  const setPreparedScreenshotSafely = useCallback(
-    (next: PreparedScreenshot | null) => {
-      const current = preparedScreenshotRef.current;
-      if (current && current.uri !== next?.uri) {
-        deleteTemporaryUri(current.uri);
-      }
-      preparedScreenshotRef.current = next;
-      if (mountedRef.current) {
-        setPreparedScreenshot(next);
-      }
-    },
-    [],
-  );
 
   const setVoiceCaptureSafely = useCallback((next: VoiceCapture | null) => {
     const current = voiceCaptureRef.current;
@@ -410,6 +415,82 @@ export function CaptureScreen({
     [cancelExtraction, cancelTranscription],
   );
 
+  const updateActiveImageText = useCallback(
+    (value: string) => {
+      cancelExtraction();
+      cancelTranscription();
+      if (!activeImageId) {
+        setTextInput(value);
+        return;
+      }
+      setImageItems((current) =>
+        current.map((item) =>
+          item.id === activeImageId ? { ...item, text: value } : item,
+        ),
+      );
+    },
+    [activeImageId, cancelExtraction, cancelTranscription],
+  );
+
+  const appendImageAssets = useCallback(
+    (assets: ImagePicker.ImagePickerAsset[]) => {
+      if (assets.length === 0) {
+        return;
+      }
+      setImageItems((current) => {
+        const existingUris = new Set(current.map((item) => item.asset.uri));
+        const inheritedText = current.length === 0 ? textInput.trim() : '';
+        const next = assets
+          .filter((asset) => !existingUris.has(asset.uri))
+          .map((asset, index) => ({
+            id: `${asset.assetId ?? asset.uri}:${Date.now()}:${index}`,
+            asset,
+            text: index === 0 ? inheritedText : '',
+          }));
+        const merged = [...current, ...next];
+        setActiveImageId((selected) => selected ?? next[0]?.id ?? null);
+        return merged;
+      });
+      if (textInput.trim() && imageItems.length === 0) {
+        setTextInput('');
+      }
+      setDraft(null);
+      setReviewQueue([]);
+      setAmountInput('');
+      setTimeInput('');
+      setDuplicateCandidates([]);
+    },
+    [textInput, imageItems.length],
+  );
+
+  useEffect(() => {
+    if (
+      !initialScreenshotUri ||
+      initialScreenshotLoadedRef.current === initialScreenshotUri
+    ) {
+      return;
+    }
+    initialScreenshotLoadedRef.current = initialScreenshotUri;
+    appendImageAssets([
+      {
+        uri: initialScreenshotUri,
+        width: 0,
+        height: 0,
+        type: 'image',
+        fileName: '当前页面截图.png',
+        mimeType: 'image/png',
+      },
+    ]);
+    onInitialScreenshotConsumed?.();
+  }, [appendImageAssets, initialScreenshotUri, onInitialScreenshotConsumed]);
+
+  useEffect(() => {
+    if (initialScreenshotError) {
+      setNotice({ tone: 'warning', message: initialScreenshotError });
+      onInitialScreenshotConsumed?.();
+    }
+  }, [initialScreenshotError, onInitialScreenshotConsumed]);
+
   const updateVoiceTranscriptFromUser = useCallback(
     (value: string) => {
       cancelExtraction();
@@ -430,10 +511,9 @@ export function CaptureScreen({
         if (!active || !result) {
           return;
         }
-        if ('canceled' in result && !result.canceled && result.assets[0]) {
+        if ('canceled' in result && !result.canceled && result.assets.length) {
           cancelExtraction();
-          setPreparedScreenshotSafely(null);
-          setImageAsset(result.assets[0]);
+          appendImageAssets(result.assets);
         } else if ('message' in result) {
           setNotice({
             tone: 'danger',
@@ -448,7 +528,7 @@ export function CaptureScreen({
     return () => {
       active = false;
     };
-  }, [cancelExtraction, setPreparedScreenshotSafely]);
+  }, [appendImageAssets, cancelExtraction]);
 
   useEffect(() => {
     const wasRecording = recordingWasActiveRef.current;
@@ -477,11 +557,8 @@ export function CaptureScreen({
       leavingRef.current = true;
       extractionAbortRef.current?.abort();
       transcriptionAbortRef.current?.abort();
-      const preparedUri = preparedScreenshotRef.current?.uri;
       const voiceUri = voiceCaptureRef.current?.uri;
-      preparedScreenshotRef.current = null;
       voiceCaptureRef.current = null;
-      deleteTemporaryUri(preparedUri);
       deleteTemporaryUri(voiceUri);
 
       const recorder = audioRecorderRef.current;
@@ -504,11 +581,16 @@ export function CaptureScreen({
     VOICE_CAPTURE_ENABLED &&
     Boolean(voiceCapture || voiceTranscript.trim());
   const hasInput = Boolean(
-    imageAsset || textInput.trim() || hasVoiceInput,
+    imageItems.length > 0 || textInput.trim() || hasVoiceInput,
   );
+  const activeImage = imageItems.find((item) => item.id === activeImageId) ??
+    imageItems[0] ??
+    null;
   const canRecognize = Boolean(
     textInput.trim() ||
-      (imageAsset && settings.ai.sendImages) ||
+      imageItems.some(
+        (item) => item.text.trim() || settings.ai.sendImages,
+      ) ||
       hasVoiceInput,
   );
   const countsInSpending = Boolean(
@@ -571,11 +653,8 @@ export function CaptureScreen({
       // Leaving the screen should not be blocked by recorder cleanup.
     }
     void setAudioModeAsync({ allowsRecording: false });
-    const preparedUri = preparedScreenshotRef.current?.uri;
     const voiceUri = voiceCaptureRef.current?.uri;
-    preparedScreenshotRef.current = null;
     voiceCaptureRef.current = null;
-    deleteTemporaryUri(preparedUri);
     deleteTemporaryUri(voiceUri);
     deleteTemporaryUri(audioRecorder.uri);
     onCancel?.();
@@ -607,6 +686,7 @@ export function CaptureScreen({
 
   const returnToInput = useCallback(() => {
     setDraft(null);
+    setReviewQueue([]);
     setDuplicateCandidates([]);
     setNotice(null);
   }, []);
@@ -699,6 +779,24 @@ export function CaptureScreen({
     setNotice(null);
   }, [dataset.recurringExpenses]);
 
+  const activateReviewQueueItem = useCallback(
+    (item: ReviewQueueItem) => {
+      setDuplicateCandidates([]);
+      if (item.draft) {
+        beginReview(item.draft);
+        return;
+      }
+      setDraft(null);
+      setAmountInput('');
+      setTimeInput('');
+      setNotice({
+        tone: 'warning',
+        message: item.error ?? '这笔截图识别失败，可以重试。',
+      });
+    },
+    [beginReview],
+  );
+
   const configuredAiService = useCallback(async () => {
     if (!settings.ai.enabled) {
       throw new Error('AI 尚未启用；可前往设置启用，或直接手动填写。');
@@ -726,23 +824,21 @@ export function CaptureScreen({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: false,
+        allowsMultipleSelection: true,
+        selectionLimit: 20,
+        orderedSelection: true,
         quality: 1,
       });
       if (
         result.canceled ||
-        !result.assets[0] ||
+        result.assets.length === 0 ||
         !mountedRef.current ||
         leavingRef.current
       ) {
         return;
       }
 
-      setPreparedScreenshotSafely(null);
-      setImageAsset(result.assets[0]);
-      setDraft(null);
-      setAmountInput('');
-      setTimeInput('');
-      setDuplicateCandidates([]);
+      appendImageAssets(result.assets);
     } catch {
       if (mountedRef.current && !leavingRef.current) {
         setNotice({
@@ -758,14 +854,26 @@ export function CaptureScreen({
   }, [
     cancelExtraction,
     cancelTranscription,
-    setPreparedScreenshotSafely,
+    appendImageAssets,
   ]);
 
-  const removeImage = useCallback(() => {
+  const removeImage = useCallback((imageId?: string) => {
     cancelExtraction();
-    setPreparedScreenshotSafely(null);
-    setImageAsset(null);
-  }, [cancelExtraction, setPreparedScreenshotSafely]);
+    setImageItems((current) => {
+      const targetId = imageId ?? activeImageId ?? current[0]?.id;
+      const next = current.filter((item) => item.id !== targetId);
+      setActiveImageId((selected) => {
+        if (selected !== targetId) {
+          return selected;
+        }
+        return next[0]?.id ?? null;
+      });
+      return next;
+    });
+    setDraft(null);
+    setReviewQueue([]);
+    setDuplicateCandidates([]);
+  }, [activeImageId, cancelExtraction]);
 
   const transcribeVoice = useCallback(
     async (capture: VoiceCapture, silent = false): Promise<string> => {
@@ -938,7 +1046,7 @@ export function CaptureScreen({
       setNotice({
         tone: 'warning',
         message:
-          imageAsset && !settings.ai.sendImages
+          imageItems.length > 0 && !settings.ai.sendImages
             ? '当前设置不发送截图，请补充文字或在设置中开启“发送截图”。'
             : `请先添加${CAPTURE_INPUT_LABEL}。`,
       });
@@ -961,22 +1069,6 @@ export function CaptureScreen({
       ) {
         throw cancelledRequestError();
       }
-      let screenshot = preparedScreenshot;
-      if (imageAsset && settings.ai.sendImages && !screenshot) {
-        const nextScreenshot = await prepareScreenshot(imageAsset.uri);
-        if (
-          controller.signal.aborted ||
-          extractionAbortRef.current !== controller ||
-          !mountedRef.current ||
-          leavingRef.current
-        ) {
-          deleteTemporaryUri(nextScreenshot.uri);
-          throw cancelledRequestError();
-        }
-        screenshot = nextScreenshot;
-        setPreparedScreenshotSafely(nextScreenshot);
-      }
-
       let transcript = VOICE_CAPTURE_ENABLED
         ? voiceTranscript.trim()
         : '';
@@ -989,8 +1081,10 @@ export function CaptureScreen({
             throw error;
           }
           const availableSources = [
-            imageAsset && settings.ai.sendImages ? '截图' : null,
-            textInput.trim() ? '文字' : null,
+            imageItems.length > 0 && settings.ai.sendImages ? '截图' : null,
+            imageItems.some((item) => item.text.trim()) || textInput.trim()
+              ? '文字'
+              : null,
           ].filter((value): value is string => Boolean(value));
           if (availableSources.length === 0) {
             throw error;
@@ -1006,28 +1100,218 @@ export function CaptureScreen({
       ) {
         throw cancelledRequestError();
       }
+      const inputs = imageItems.length > 0
+        ? imageItems
+        : [{ id: 'text-input', asset: undefined, text: textInput }];
+      const reviewItems: ReviewQueueItem[] = [];
+      const failedReviewItems: ReviewQueueItem[] = [];
+      const failedItems: string[] = [];
+      const compatibilityWarnings = new Set<string>();
 
-      const sendsImage = Boolean(imageAsset && settings.ai.sendImages);
-      const sendsText = Boolean(textInput.trim());
-      const sendsVoice = VOICE_CAPTURE_ENABLED && Boolean(transcript);
-      if (!sendsImage && !sendsText && !sendsVoice) {
+      for (let index = 0; index < inputs.length; index += 1) {
+        const item = inputs[index];
+        let screenshot: Awaited<ReturnType<typeof prepareScreenshot>> | null =
+          null;
+        try {
+          if (
+            controller.signal.aborted ||
+            extractionAbortRef.current !== controller ||
+            !mountedRef.current ||
+            leavingRef.current
+          ) {
+            throw cancelledRequestError();
+          }
+
+          if (item.asset && settings.ai.sendImages) {
+            screenshot = await prepareScreenshot(item.asset.uri);
+          }
+          const supplementalText = item.text.trim();
+          const sendsImage = Boolean(item.asset && settings.ai.sendImages);
+          const sendsText = Boolean(supplementalText);
+          const sendsVoice = VOICE_CAPTURE_ENABLED && Boolean(transcript);
+          if (!sendsImage && !sendsText && !sendsVoice) {
+            const message = `第 ${index + 1} 张截图没有可发送内容`;
+            failedItems.push(message);
+            failedReviewItems.push({
+              id: item.id,
+              asset: item.asset,
+              draft: null,
+              error: message,
+            });
+            continue;
+          }
+
+          const source = captureSource(sendsImage, sendsText, sendsVoice);
+          const sourceFingerprint = createSourceFingerprint({
+            screenshot: sendsImage ? screenshot ?? undefined : undefined,
+            imageAsset: sendsImage ? item.asset : undefined,
+            text: supplementalText,
+            transcript,
+          });
+          const extracted = await service.extractTransaction({
+            screenshot: sendsImage ? screenshot ?? undefined : undefined,
+            text: supplementalText || undefined,
+            voiceTranscript: transcript || undefined,
+            categories: settings.categories,
+            todayLocal: formatLocalDate(new Date()),
+            locale: settings.locale,
+            defaultCurrency: settings.currency,
+            signal: controller.signal,
+          });
+          if (
+            controller.signal.aborted ||
+            extractionAbortRef.current !== controller ||
+            !mountedRef.current ||
+            leavingRef.current
+          ) {
+            throw cancelledRequestError();
+          }
+          const normalized = normalizeTransactionDraft(
+            {
+              ...extracted,
+              source,
+              sourceFingerprint,
+            },
+            {
+              defaultCurrency: settings.currency,
+              defaultDate: formatLocalDate(new Date()),
+              defaultCategoryId: settings.defaultCategoryId,
+              defaultStatus: 'confirmed',
+              defaultPaymentChannel: settings.defaultPaymentChannel,
+              categories: settings.categories,
+              source,
+            },
+          );
+          reviewItems.push({
+            id: item.id,
+            asset: item.asset,
+            draft: normalized,
+          });
+          if (extracted.reasoningEffortFallback) {
+            compatibilityWarnings.add(
+              '当前接口或模型不支持所选思考级别，已按自动模式完成识别。',
+            );
+          }
+        } catch (error) {
+          if (isCancellationError(error)) {
+            throw error;
+          }
+          const message =
+            `第 ${index + 1} 张截图识别失败：${userFacingError(error)}`;
+          failedItems.push(message);
+          failedReviewItems.push({
+            id: item.id,
+            asset: item.asset,
+            draft: null,
+            error: message,
+          });
+        } finally {
+          deleteTemporaryUri(screenshot?.uri);
+        }
+      }
+
+      const nextReviewQueue = [...reviewItems, ...failedReviewItems];
+      if (nextReviewQueue.length === 0) {
         throw new Error(
-          imageAsset && !settings.ai.sendImages
-            ? '当前设置不发送截图，请补充文字或在设置中允许发送截图。'
-            : '没有可发送给 AI 的内容，请补充输入。',
+          failedItems.join('；') || '没有可发送给 AI 的内容，请补充输入。',
         );
       }
 
+      setReviewQueue(nextReviewQueue);
+      if (nextReviewQueue[0].draft) {
+        beginReview(nextReviewQueue[0].draft);
+      } else {
+        setDraft(null);
+        setAmountInput('');
+        setTimeInput('');
+        setDuplicateCandidates([]);
+      }
+      const recognitionWarnings = [
+        imageItems.length > 1
+          ? `已完成 ${reviewItems.length}/${imageItems.length} 张截图识别，失败项已放到最后。`
+          : null,
+        partialInputWarning,
+        ...compatibilityWarnings,
+        failedItems.length > 0 ? failedItems.join('；') : null,
+      ].filter((value): value is string => Boolean(value));
+      if (recognitionWarnings.length > 0) {
+        setNotice({
+          tone: failedItems.length > 0 ? 'warning' : 'info',
+          message: recognitionWarnings.join(' '),
+        });
+      }
+    } catch (error) {
+      if (
+        extractionAbortRef.current === controller &&
+        mountedRef.current &&
+        !leavingRef.current &&
+        !isCancellationError(error)
+      ) {
+        setNotice({
+          tone: 'danger',
+          message: `${userFacingError(error)} 仍可选择“手动填写”。`,
+        });
+      }
+    } finally {
+      if (extractionAbortRef.current === controller) {
+        extractionAbortRef.current = null;
+        if (mountedRef.current && !leavingRef.current) {
+          setRecognizing(false);
+        }
+      }
+    }
+  }, [
+    beginReview,
+    configuredAiService,
+    canRecognize,
+    imageItems,
+    settings.ai.sendImages,
+    settings.categories,
+    settings.currency,
+    settings.defaultCategoryId,
+    settings.defaultPaymentChannel,
+    settings.locale,
+    textInput,
+    transcribeVoice,
+    voiceCapture,
+    voiceTranscript,
+  ]);
+
+  const retryCurrentRecognition = useCallback(async () => {
+    const item = reviewQueue[0];
+    if (!item || item.draft) {
+      return;
+    }
+    extractionAbortRef.current?.abort();
+    const controller = new AbortController();
+    extractionAbortRef.current = controller;
+    setRecognizing(true);
+    setNotice(null);
+    let screenshot: Awaited<ReturnType<typeof prepareScreenshot>> | null = null;
+    try {
+      const service = await configuredAiService();
+      const sourceInput = imageItems.find((candidate) => candidate.id === item.id);
+      const supplementalText = sourceInput?.text.trim() ?? textInput.trim();
+      const transcript = VOICE_CAPTURE_ENABLED ? voiceTranscript.trim() : '';
+      if (item.asset && settings.ai.sendImages) {
+        screenshot = await prepareScreenshot(item.asset.uri);
+      }
+      const sendsImage = Boolean(item.asset && settings.ai.sendImages);
+      const sendsText = Boolean(supplementalText);
+      const sendsVoice = VOICE_CAPTURE_ENABLED && Boolean(transcript);
+      if (!sendsImage && !sendsText && !sendsVoice) {
+        throw new Error('当前设置不会发送截图，请补充文字或在设置中开启“发送截图”。');
+      }
       const source = captureSource(sendsImage, sendsText, sendsVoice);
       const sourceFingerprint = createSourceFingerprint({
         screenshot: sendsImage ? screenshot ?? undefined : undefined,
-        imageAsset: sendsImage ? imageAsset : undefined,
-        text: textInput,
+        imageAsset: sendsImage ? item.asset : undefined,
+        text: supplementalText,
         transcript,
       });
       const extracted = await service.extractTransaction({
         screenshot: sendsImage ? screenshot ?? undefined : undefined,
-        text: textInput.trim() || undefined,
+        text: supplementalText || undefined,
         voiceTranscript: transcript || undefined,
         categories: settings.categories,
         todayLocal: formatLocalDate(new Date()),
@@ -1059,33 +1343,27 @@ export function CaptureScreen({
           source,
         },
       );
-      beginReview(normalized);
-      const compatibilityWarning = extracted.reasoningEffortFallback
-        ? '当前接口或模型不支持所选思考级别，已按自动模式完成识别。'
-        : null;
-      const recognitionWarnings = [
-        partialInputWarning,
-        compatibilityWarning,
-      ].filter((value): value is string => Boolean(value));
-      if (recognitionWarnings.length > 0) {
-        setNotice({
-          tone: 'warning',
-          message: recognitionWarnings.join(' '),
-        });
-      }
+      const updatedItem = { ...item, draft: normalized, error: undefined };
+      setReviewQueue((current) =>
+        current[0]?.id === item.id ? [updatedItem, ...current.slice(1)] : current,
+      );
+      activateReviewQueueItem(updatedItem);
+      setNotice({
+        tone: 'success',
+        message: '已重试识别，请核对这笔账目。',
+      });
     } catch (error) {
-      if (
-        extractionAbortRef.current === controller &&
-        mountedRef.current &&
-        !leavingRef.current &&
-        !isCancellationError(error)
-      ) {
-        setNotice({
-          tone: 'danger',
-          message: `${userFacingError(error)} 仍可选择“手动填写”。`,
-        });
+      if (!isCancellationError(error) && mountedRef.current && !leavingRef.current) {
+        const message = userFacingError(error);
+        setReviewQueue((current) =>
+          current[0]?.id === item.id
+            ? [{ ...current[0], error: `重试失败：${message}` }, ...current.slice(1)]
+            : current,
+        );
+        setNotice({ tone: 'danger', message: `重试失败：${message}` });
       }
     } finally {
+      deleteTemporaryUri(screenshot?.uri);
       if (extractionAbortRef.current === controller) {
         extractionAbortRef.current = null;
         if (mountedRef.current && !leavingRef.current) {
@@ -1094,12 +1372,10 @@ export function CaptureScreen({
       }
     }
   }, [
-    beginReview,
+    activateReviewQueueItem,
     configuredAiService,
-    canRecognize,
-    imageAsset,
-    preparedScreenshot,
-    setPreparedScreenshotSafely,
+    imageItems,
+    reviewQueue,
     settings.ai.sendImages,
     settings.categories,
     settings.currency,
@@ -1107,10 +1383,22 @@ export function CaptureScreen({
     settings.defaultPaymentChannel,
     settings.locale,
     textInput,
-    transcribeVoice,
-    voiceCapture,
     voiceTranscript,
   ]);
+
+  const skipFailedReviewItem = useCallback(() => {
+    if (!reviewQueue[0] || reviewQueue[0].draft) {
+      return;
+    }
+    const remaining = reviewQueue.slice(1);
+    setReviewQueue(remaining);
+    if (remaining[0]) {
+      activateReviewQueueItem(remaining[0]);
+      return;
+    }
+    setDraft(null);
+    setNotice({ tone: 'warning', message: '已跳过失败项，可以返回输入页重新选择。' });
+  }, [activateReviewQueueItem, reviewQueue]);
 
   const beginManualEntry = useCallback(() => {
     cancelExtraction();
@@ -1208,16 +1496,17 @@ export function CaptureScreen({
   );
 
   const resetAfterSave = useCallback(() => {
-    setImageAsset(null);
-    setPreparedScreenshotSafely(null);
+    setImageItems([]);
+    setActiveImageId(null);
     setTextInput('');
     setVoiceCaptureSafely(null);
     setVoiceTranscript('');
     setDraft(null);
+    setReviewQueue([]);
     setAmountInput('');
     setTimeInput('');
     setDuplicateCandidates([]);
-  }, [setPreparedScreenshotSafely, setVoiceCaptureSafely]);
+  }, [setVoiceCaptureSafely]);
 
   const saveDraft = useCallback(
     async (allowDuplicate = false) => {
@@ -1271,12 +1560,21 @@ export function CaptureScreen({
       setSaving(true);
       try {
         await addTransaction(result.transaction);
+        const remainingQueue = reviewQueue.slice(1);
+        if (remainingQueue.length > 0) {
+          setReviewQueue(remainingQueue);
+          activateReviewQueueItem(remainingQueue[0]);
+          if (mountedRef.current && !leavingRef.current) {
+            setNotice({
+              tone: 'success',
+              message: `已保存当前账目，还有 ${remainingQueue.length} 笔待核对。`,
+            });
+          }
+          return;
+        }
         resetAfterSave();
         if (mountedRef.current && !leavingRef.current) {
-          setNotice({
-            tone: 'success',
-            message: '账目已保存。',
-          });
+          setNotice({ tone: 'success', message: '账目已保存。' });
         }
       } catch (error) {
         if (mountedRef.current && !leavingRef.current) {
@@ -1316,10 +1614,12 @@ export function CaptureScreen({
       dataset.transactions,
       dateError,
       draft,
+      activateReviewQueueItem,
       last4Error,
       merchantError,
       onSaved,
       resetAfterSave,
+      reviewQueue,
       settings.categories,
       timeError,
       timeInput,
@@ -1327,7 +1627,7 @@ export function CaptureScreen({
   );
 
   const inputSummary = [
-    imageAsset ? '截图' : null,
+    imageItems.length > 0 ? `截图 ${imageItems.length} 张` : null,
     textInput.trim() ? '文字' : null,
     VOICE_CAPTURE_ENABLED &&
     (voiceCapture || voiceTranscript.trim())
@@ -1335,11 +1635,90 @@ export function CaptureScreen({
       : null,
   ].filter((value): value is string => Boolean(value));
 
+  const failedReviewItem = reviewQueue[0];
+  if (failedReviewItem && !failedReviewItem.draft) {
+    const failedAsset = failedReviewItem.asset;
+    const failedIndex = Math.max(
+      1,
+      imageItems.findIndex((item) => item.id === failedReviewItem.id) + 1,
+    );
+    const totalReviewItems = Math.max(imageItems.length, reviewQueue.length);
+    return (
+      <Screen
+        theme={theme}
+        bottomNavigation={false}
+        testID="capture-failed-review-screen"
+      >
+        <PageHeader
+          theme={theme}
+          title="识别失败"
+          subtitle={`第 ${failedIndex}/${totalReviewItems} 笔待处理`}
+          onBack={returnToInput}
+          backLabel="返回录入"
+          backDisabled={recognizing}
+        />
+        <View style={styles.section}>
+          <InlineNotice
+            theme={theme}
+            tone="warning"
+            message={failedReviewItem.error ?? '这笔截图识别失败，请重试。'}
+          />
+          {failedAsset ? (
+            <Image
+              source={{ uri: failedAsset.uri }}
+              resizeMode="contain"
+              style={[
+                styles.reviewPreview,
+                { backgroundColor: theme.colors.surfaceMuted },
+              ]}
+              accessibilityLabel="识别失败的消费截图"
+              testID="capture-failed-screenshot"
+            />
+          ) : null}
+          <Text style={[styles.help, { color: theme.colors.textMuted }]}>
+            失败项已经放到成功账目之后。重试只会重新识别当前这一张。
+          </Text>
+          <View style={styles.footerActions}>
+            <AppButton
+              theme={theme}
+              label="重试当前识别"
+              icon="refresh"
+              onPress={() => void retryCurrentRecognition()}
+              loading={recognizing}
+              testID="capture-retry"
+            />
+            <AppButton
+              theme={theme}
+              label="跳过此项"
+              icon="play-skip-forward-outline"
+              onPress={skipFailedReviewItem}
+              disabled={recognizing}
+              variant="secondary"
+              testID="capture-skip-failed"
+            />
+            <AppButton
+              theme={theme}
+              label="返回输入"
+              icon="arrow-back"
+              onPress={returnToInput}
+              disabled={recognizing}
+              variant="quiet"
+            />
+          </View>
+        </View>
+      </Screen>
+    );
+  }
+
   if (draft) {
     const reviewFields = Array.from(new Set(draft.review.fields))
       .map((field) => draftFieldLabels[field])
       .filter(Boolean);
     const funding = draft.fundingInstrument ?? { type: 'unknown' as const };
+    const reviewAsset = reviewQueue[0]?.asset ?? activeImage?.asset;
+    const reviewPosition = reviewQueue.length > 0
+      ? `第 ${imageItems.length - reviewQueue.length + 1}/${imageItems.length} 笔`
+      : null;
 
     return (
       <Screen
@@ -1351,7 +1730,7 @@ export function CaptureScreen({
         <PageHeader
           theme={theme}
           title="确认账目"
-          subtitle="保存前核对识别结果"
+          subtitle={reviewPosition ?? '保存前核对识别结果'}
           onBack={returnToInput}
           backLabel="返回录入"
           backDisabled={saving}
@@ -1364,6 +1743,31 @@ export function CaptureScreen({
               tone={notice.tone}
               message={notice.message}
             />
+          </View>
+        ) : null}
+
+        {reviewAsset ? (
+          <View style={styles.section}>
+            <SectionHeader
+              theme={theme}
+              title="原始截图"
+              subtitle="核对识别结果时可直接对照原图"
+            />
+            <Image
+              source={{ uri: reviewAsset.uri }}
+              resizeMode="contain"
+              style={[
+                styles.reviewPreview,
+                { backgroundColor: theme.colors.surfaceMuted },
+              ]}
+              accessibilityLabel="待核对的消费截图"
+              testID="capture-review-screenshot"
+            />
+            <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
+              {[reviewAsset.fileName || '已选择图片', `${reviewAsset.width} × ${reviewAsset.height}`]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
           </View>
         ) : null}
 
@@ -1672,7 +2076,7 @@ export function CaptureScreen({
           {duplicateCandidates.length === 0 ? (
             <AppButton
               theme={theme}
-              label="确认保存"
+              label={reviewQueue.length > 1 ? '保存并核对下一笔' : '确认保存'}
               icon="checkmark-circle-outline"
               onPress={() => void saveDraft(false)}
               loading={saving}
@@ -1733,42 +2137,120 @@ export function CaptureScreen({
         >
           <SectionHeader
             theme={theme}
-            title="消费截图（可选）"
-            subtitle="选择后仍可在下方补充文字"
+            title={
+              imageItems.length > 0
+                ? `消费截图（已选 ${imageItems.length} 张）`
+                : '消费截图（可选）'
+            }
+            subtitle={
+              imageItems.length > 0
+                ? '点击缩略图切换，每张截图都可以单独补充文字'
+                : '可一次选择多张，再逐张补充说明'
+            }
             action={
-              imageAsset ? (
+              imageItems.length > 0 ? (
                 <IconButton
                   theme={theme}
                   icon="trash-outline"
-                  label="移除截图"
+                  label="移除当前截图"
                   onPress={removeImage}
                 />
               ) : undefined
             }
           />
-          {imageAsset ? (
+          {imageItems.length > 0 ? (
             <>
-              <Image
-                source={{ uri: imageAsset.uri }}
-                resizeMode="contain"
-                style={[
-                  styles.preview,
-                  { backgroundColor: theme.colors.surfaceMuted },
-                ]}
-                accessibilityLabel="已选择的消费截图"
-              />
-              <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
-                {[
-                  imageAsset.fileName || '已选择图片',
-                  `${imageAsset.width} × ${imageAsset.height}`,
-                  formatBytes(imageAsset.fileSize),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </Text>
+              <View style={styles.imageList}>
+                {imageItems.map((item, index) => {
+                  const selected = item.id === activeImage?.id;
+                  return (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.imageItemRow,
+                        {
+                          borderColor: selected
+                            ? theme.colors.primary
+                            : theme.colors.border,
+                          backgroundColor: selected
+                            ? theme.colors.primarySoft
+                            : theme.colors.surfaceMuted,
+                        },
+                      ]}
+                    >
+                      <Pressable
+                        onPress={() => setActiveImageId(item.id)}
+                        style={styles.imageItemSelect}
+                        accessibilityRole="button"
+                        accessibilityLabel={`选择第 ${index + 1} 张截图`}
+                      >
+                        <Image
+                          source={{ uri: item.asset.uri }}
+                          resizeMode="cover"
+                          style={styles.thumbnail}
+                        />
+                        <View style={styles.imageItemText}>
+                          <Text
+                            style={[
+                              styles.fieldLabel,
+                              { color: theme.colors.text },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            第 {index + 1} 张截图
+                          </Text>
+                          <Text
+                            style={[
+                              styles.mediaMeta,
+                              { color: theme.colors.textMuted },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {item.text.trim() ? '已填写补充文字' : '待补充文字（可选）'}
+                          </Text>
+                        </View>
+                      </Pressable>
+                      <IconButton
+                        theme={theme}
+                        icon="close-circle-outline"
+                        label={`移除第 ${index + 1} 张截图`}
+                        onPress={() => removeImage(item.id)}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+              {activeImage ? (
+                <View style={styles.activeImageEditor}>
+                  <Image
+                    source={{ uri: activeImage.asset.uri }}
+                    resizeMode="contain"
+                    style={[
+                      styles.preview,
+                      { backgroundColor: theme.colors.surfaceMuted },
+                    ]}
+                    accessibilityLabel="当前正在补充说明的消费截图"
+                  />
+                  <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
+                    {[activeImage.asset.fileName || '已选择图片', `${activeImage.asset.width} × ${activeImage.asset.height}`, formatBytes(activeImage.asset.fileSize)]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                  <FormField
+                    theme={theme}
+                    label={`第 ${Math.max(1, imageItems.findIndex((item) => item.id === activeImage.id) + 1)} 张补充说明（可选）`}
+                    value={activeImage.text}
+                    onChangeText={updateActiveImageText}
+                    multiline
+                    placeholder="例如：这笔是软件激活码"
+                    hint="AI 会把这段文字与当前截图一起整理成消费内容。"
+                    testID="capture-image-text"
+                  />
+                </View>
+              ) : null}
               <AppButton
                 theme={theme}
-                label="重新选择"
+                label="继续添加截图"
                 icon="images-outline"
                 onPress={() => void pickImage()}
                 variant="secondary"
@@ -1787,7 +2269,7 @@ export function CaptureScreen({
           )}
         </View>
 
-        <View style={styles.textComposer}>
+        {imageItems.length === 0 ? <View style={styles.textComposer}>
           <FormField
             theme={theme}
             label="补充说明（可选）"
@@ -1798,7 +2280,7 @@ export function CaptureScreen({
             hint="没有截图时，也可以只填写文字。"
             testID="capture-text"
           />
-        </View>
+        </View> : null}
 
         {VOICE_CAPTURE_ENABLED ? (
           <View
@@ -1921,7 +2403,7 @@ export function CaptureScreen({
         />
         {inputSummary.length > 0 ? (
           <View style={styles.sourceSummary}>
-            {imageAsset ? (
+            {imageItems.length > 0 ? (
               <View
                 style={[
                   styles.sourcePill,
@@ -1934,11 +2416,11 @@ export function CaptureScreen({
                   color={theme.colors.primary}
                 />
                 <Text style={[styles.sourcePillText, { color: theme.colors.text }]}>
-                  截图
+                  截图 {imageItems.length} 张
                 </Text>
               </View>
             ) : null}
-            {textInput.trim() ? (
+            {textInput.trim() || imageItems.some((item) => item.text.trim()) ? (
               <View
                 style={[
                   styles.sourcePill,
@@ -1975,7 +2457,7 @@ export function CaptureScreen({
             ) : null}
           </View>
         ) : null}
-        {imageAsset && !canRecognize ? (
+        {imageItems.length > 0 && !canRecognize ? (
           <InlineNotice
             theme={theme}
             tone="info"
@@ -2026,6 +2508,43 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 240,
     borderRadius: radii.sm,
+  },
+  reviewPreview: {
+    width: '100%',
+    height: 360,
+    borderRadius: radii.sm,
+  },
+  imageList: {
+    gap: spacing.sm,
+  },
+  imageItemRow: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    padding: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  imageItemSelect: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  thumbnail: {
+    width: 56,
+    height: 56,
+    borderRadius: radii.sm,
+  },
+  imageItemText: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  activeImageEditor: {
+    gap: spacing.md,
   },
   mediaMeta: {
     fontSize: typography.caption,

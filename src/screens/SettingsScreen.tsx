@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  PermissionsAndroid,
   Platform,
   StyleSheet,
   Switch,
@@ -21,6 +22,10 @@ import {
   pickDatasetBackup,
   saveApiKey,
   type ReasoningEffortSupport,
+  isCurrentScreenCaptureEnabled,
+  openCurrentScreenCaptureSettings,
+  showCurrentScreenCaptureNotification,
+  hideCurrentScreenCaptureNotification,
 } from '../services';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
@@ -158,6 +163,9 @@ export function SettingsScreen({
     tone: 'info' | 'success' | 'warning' | 'danger';
     message: string;
   } | null>(null);
+  const [screenCaptureEnabled, setScreenCaptureEnabled] = useState(false);
+  const [captureNotificationEnabled, setCaptureNotificationEnabled] =
+    useState(false);
 
   const updateSettingSafely = (
     patch: Parameters<typeof updateSettings>[0],
@@ -195,6 +203,15 @@ export function SettingsScreen({
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    isCurrentScreenCaptureEnabled()
+      .then(setScreenCaptureEnabled)
+      .catch(() => setScreenCaptureEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -376,6 +393,64 @@ export function SettingsScreen({
     } finally {
       setTesting(false);
     }
+  };
+
+  const handleOpenScreenCaptureSettings = async () => {
+    try {
+      await openCurrentScreenCaptureSettings();
+      setNotice({
+        tone: 'info',
+        message: '请在系统无障碍服务列表中启用 Nya 记账，然后返回这里刷新状态。',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '无法打开系统设置。',
+      });
+    }
+  };
+
+  const handleShowScreenCaptureNotification = async () => {
+    try {
+      const enabled = await isCurrentScreenCaptureEnabled();
+      setScreenCaptureEnabled(enabled);
+      if (!enabled) {
+        setNotice({
+          tone: 'warning',
+          message: '请先启用 Nya 记账的无障碍截图服务。',
+        });
+        return;
+      }
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        const permission = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        );
+        if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          setNotice({ tone: 'warning', message: '通知权限未开启，无法显示截图按钮。' });
+          return;
+        }
+      }
+      const shown = await showCurrentScreenCaptureNotification();
+      if (!shown) {
+        throw new Error('通知权限未开启，无法显示截图按钮。');
+      }
+      setCaptureNotificationEnabled(true);
+      setNotice({
+        tone: 'success',
+        message: '通知栏截图按钮已开启。打开支付宝等页面后，点通知中的“截图记账”即可。',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '无法开启通知栏截图按钮。',
+      });
+    }
+  };
+
+  const handleHideScreenCaptureNotification = async () => {
+    await hideCurrentScreenCaptureNotification();
+    setCaptureNotificationEnabled(false);
+    setNotice({ tone: 'success', message: '通知栏截图按钮已关闭。' });
   };
 
   const handleExport = async () => {
@@ -730,6 +805,50 @@ export function SettingsScreen({
           loading={savingSettings}
         />
       </View>
+
+      {Platform.OS === 'android' ? (
+        <View style={styles.section}>
+          <SectionHeader
+            title="当前页面截图"
+            subtitle="从通知栏截取支付宝等页面并直接进入识别"
+            theme={theme}
+          />
+          <InlineNotice
+            theme={theme}
+            tone={screenCaptureEnabled ? 'success' : 'warning'}
+            message={
+              screenCaptureEnabled
+                ? '无障碍截图服务已启用。截图只保存为本次识别的临时文件。'
+                : '首次使用需要在系统设置中启用无障碍截图服务。'
+            }
+          />
+          <View style={styles.buttonRow}>
+            <AppButton
+              label={screenCaptureEnabled ? '刷新服务状态' : '打开系统设置'}
+              icon="accessibility-outline"
+              onPress={() => void handleOpenScreenCaptureSettings()}
+              theme={theme}
+              variant="secondary"
+              compact
+            />
+            <AppButton
+              label={captureNotificationEnabled ? '关闭通知按钮' : '开启通知按钮'}
+              icon={captureNotificationEnabled ? 'notifications-off-outline' : 'notifications-outline'}
+              onPress={() =>
+                void (captureNotificationEnabled
+                  ? handleHideScreenCaptureNotification()
+                  : handleShowScreenCaptureNotification())
+              }
+              theme={theme}
+              disabled={!screenCaptureEnabled && !captureNotificationEnabled}
+              compact
+            />
+          </View>
+          <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>
+            开启后 Nya 记账会在通知栏常驻一个“截图记账”按钮；点击后会自动返回本应用，截图进入批量录入页。
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <SectionHeader title="数据" subtitle="账本只保存在本机" theme={theme} />
