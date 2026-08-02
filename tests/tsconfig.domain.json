@@ -15,6 +15,7 @@
   "include": [
     "../src/domain/**/*.ts",
     "../src/services/ai.ts",
+    "../src/services/aiCapabilities.ts",
     "../src/services/media.ts"
   ]
 }

@@ -1,4 +1,5 @@
 import {
+  AI_REASONING_EFFORTS,
   PAYMENT_CHANNELS,
   type AiSettings,
   type AppSettings,
@@ -13,6 +14,7 @@ export const DEFAULT_AI_SETTINGS: Readonly<AiSettings> = {
   endpoint: 'https://api.openai.com/v1',
   model: 'gpt-4.1-mini',
   transcriptionModel: 'gpt-4o-mini-transcribe',
+  reasoningEffort: 'auto',
   requestTimeoutMs: 45_000,
   sendImages: true,
 };
@@ -180,6 +182,13 @@ export function normalizeAppSettings(input: unknown): AppSettings {
         rawAi.transcriptionModel.trim()
           ? rawAi.transcriptionModel.trim()
           : DEFAULT_AI_SETTINGS.transcriptionModel,
+      reasoningEffort:
+        typeof rawAi.reasoningEffort === 'string' &&
+        (AI_REASONING_EFFORTS as readonly string[]).includes(
+          rawAi.reasoningEffort,
+        )
+          ? (rawAi.reasoningEffort as AiSettings['reasoningEffort'])
+          : DEFAULT_AI_SETTINGS.reasoningEffort,
       requestTimeoutMs:
         typeof rawAi.requestTimeoutMs === 'number' &&
         Number.isFinite(rawAi.requestTimeoutMs)

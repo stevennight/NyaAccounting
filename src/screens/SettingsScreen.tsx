@@ -10,14 +10,17 @@ import {
 
 import { createDemoDataset } from '../domain/demoData';
 import { majorToMinor, minorToMajor } from '../domain/money';
+import type { AiReasoningEffort } from '../domain/types';
 import {
   API_KEY_STORAGE,
-  createAiService,
+  createCapabilityAwareAiService,
   deleteApiKey,
   exportDatasetBackup,
   getApiKey,
+  getReasoningEffortSupport,
   pickDatasetBackup,
   saveApiKey,
+  type ReasoningEffortSupport,
 } from '../services';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
@@ -36,6 +39,16 @@ const themeOptions: Array<ChoiceOption<ThemeChoice>> = [
   { value: 'system', label: '跟随系统' },
   { value: 'light', label: '浅色' },
   { value: 'dark', label: '深色' },
+];
+
+const reasoningOptions: Array<ChoiceOption<AiReasoningEffort>> = [
+  { value: 'auto', label: '自动（兼容）' },
+  { value: 'none', label: '关闭' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'xhigh', label: '超高' },
+  { value: 'max', label: '最大' },
 ];
 
 type SettingsScreenProps = {
@@ -127,6 +140,11 @@ export function SettingsScreen({
   const [transcriptionModel, setTranscriptionModel] = useState(
     settings.ai.transcriptionModel ?? 'gpt-4o-mini-transcribe',
   );
+  const [reasoningEffort, setReasoningEffort] = useState(
+    settings.ai.reasoningEffort,
+  );
+  const [reasoningSupport, setReasoningSupport] =
+    useState<ReasoningEffortSupport>('unknown');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [hasApiKey, setHasApiKey] = useState(false);
   const [keyStatusLoading, setKeyStatusLoading] = useState(true);
@@ -188,13 +206,42 @@ export function SettingsScreen({
     setTranscriptionModel(
       settings.ai.transcriptionModel ?? 'gpt-4o-mini-transcribe',
     );
+    setReasoningEffort(settings.ai.reasoningEffort);
   }, [
     settings.ai.endpoint,
     settings.ai.model,
+    settings.ai.reasoningEffort,
     settings.ai.transcriptionModel,
     settings.currency,
     settings.monthlyBudgetMinor,
   ]);
+
+  useEffect(() => {
+    if (
+      reasoningEffort === 'auto' ||
+      !endpoint.trim() ||
+      !model.trim()
+    ) {
+      setReasoningSupport('unknown');
+      return;
+    }
+
+    let active = true;
+    getReasoningEffortSupport(endpoint, model)
+      .then((support) => {
+        if (active) {
+          setReasoningSupport(support);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setReasoningSupport('unknown');
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [endpoint, model, reasoningEffort]);
 
   const budgetError = useMemo(() => {
     if (!budget.trim()) {
@@ -225,6 +272,7 @@ export function SettingsScreen({
           endpoint: endpoint.trim(),
           model: model.trim(),
           transcriptionModel: transcriptionModel.trim(),
+          reasoningEffort,
         },
       });
       setNotice({ tone: 'success', message: '设置已保存在本机。' });
@@ -279,12 +327,16 @@ export function SettingsScreen({
       if (!apiKey) {
         throw new Error('请先保存 API Key。');
       }
-      const service = createAiService({
-        baseUrl: endpoint,
-        model,
-        apiKey,
-        timeoutMs: settings.ai.requestTimeoutMs,
-      });
+      const service = await createCapabilityAwareAiService(
+        {
+          baseUrl: endpoint,
+          model,
+          reasoningEffort,
+          apiKey,
+          timeoutMs: settings.ai.requestTimeoutMs,
+        },
+        { forceReasoningProbe: true },
+      );
       const result = await service.extractTransaction({
         text: '测试：今天午饭 12.30 元，微信支付。',
         todayLocal: new Date().toISOString().slice(0, 10),
@@ -294,7 +346,25 @@ export function SettingsScreen({
       if (result.amountMinor !== 1230) {
         throw new Error('接口可以访问，但结构化结果不符合预期。请检查模型是否支持图片与 JSON。');
       }
-      setNotice({ tone: 'success', message: '连接正常，模型可以生成结构化账目。' });
+      const detectedSupport =
+        reasoningEffort === 'auto'
+          ? 'unknown'
+          : await getReasoningEffortSupport(endpoint, model).catch(
+              () => 'unknown' as const,
+            );
+      setReasoningSupport(detectedSupport);
+      setNotice(
+        result.reasoningEffortFallback
+          ? {
+              tone: 'warning',
+              message:
+                '连接正常，但当前接口或模型不支持所选思考级别，实际会按自动模式运行。',
+            }
+          : {
+              tone: 'success',
+              message: '连接正常，模型可以生成结构化账目。',
+            },
+      );
     } catch (error) {
       setNotice({
         tone: 'danger',
@@ -541,6 +611,25 @@ export function SettingsScreen({
           placeholder="gpt-4.1-mini"
           testID="settings-model"
         />
+        <View style={styles.settingGroup}>
+          <Text style={[styles.settingLabel, { color: theme.colors.text }]}>思考级别</Text>
+          <ChoiceChips
+            theme={theme}
+            value={reasoningEffort}
+            options={reasoningOptions}
+            onChange={setReasoningEffort}
+            testID="settings-reasoning-effort"
+          />
+          <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>
+            {reasoningEffort === 'auto'
+              ? '不发送 reasoning_effort，由模型使用默认值；兼容性最好。'
+              : reasoningSupport === 'unsupported'
+                ? '当前接口或模型不支持此参数，实际会按自动模式运行。测试连接可重新检测。'
+                : reasoningSupport === 'supported'
+                  ? '当前接口与模型已确认支持此思考级别。'
+                  : '首次识别时自动检测；不支持时会降级并缓存 7 天。'}
+          </Text>
+        </View>
         {VOICE_CAPTURE_ENABLED ? (
           <FormField
             theme={theme}
@@ -716,6 +805,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  settingGroup: {
+    gap: spacing.sm,
+  },
+  settingLabel: {
+    fontSize: typography.label,
+    fontWeight: '700',
+  },
+  settingHint: {
+    fontSize: typography.caption,
+    lineHeight: 18,
   },
   dataPanel: {
     borderWidth: 1,

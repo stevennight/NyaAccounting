@@ -6,6 +6,24 @@ const domain = require('../.test-build/domain/index.js');
 const REFERENCE_DATE = '2026-07-27';
 const REFERENCE_MONTH = '2026-07';
 
+describe('settings normalization', () => {
+  test('keeps old AI settings compatible and accepts a reasoning choice', () => {
+    const legacy = domain.normalizeAppSettings({
+      ai: { model: 'gpt-5.6-sol' },
+    });
+    const configured = domain.normalizeAppSettings({
+      ai: { model: 'gpt-5.6-sol', reasoningEffort: 'none' },
+    });
+    const invalid = domain.normalizeAppSettings({
+      ai: { reasoningEffort: 'fastest' },
+    });
+
+    assert.equal(legacy.ai.reasoningEffort, 'auto');
+    assert.equal(configured.ai.reasoningEffort, 'none');
+    assert.equal(invalid.ai.reasoningEffort, 'auto');
+  });
+});
+
 describe('spending rules', () => {
   const dataset = domain.createDemoDataset(REFERENCE_DATE);
 

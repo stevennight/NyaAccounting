@@ -10,6 +10,7 @@ import {
   TRANSACTION_KINDS,
   TRANSACTION_STATUSES,
   type CategoryId,
+  type AiReasoningEffort,
   type DraftFieldEvidence,
   type DraftFieldName,
   type FundingInstrument,
@@ -51,11 +52,21 @@ type TextResponse = {
 
 type ResponseFormatMode = 'json_schema' | 'json_object' | 'prompt_only';
 
+export type ReasoningEffortSupport =
+  | 'unknown'
+  | 'supported'
+  | 'unsupported';
+
 export interface OpenAICompatibleConfig {
   baseUrl: string;
   model: string;
   apiKey?: string;
   transcriptionModel?: string;
+  reasoningEffort?: AiReasoningEffort;
+  reasoningEffortSupport?: ReasoningEffortSupport;
+  onReasoningEffortSupport?: (
+    support: Exclude<ReasoningEffortSupport, 'unknown'>,
+  ) => void | Promise<void>;
   timeoutMs?: number;
   headers?: Record<string, string>;
   /**
@@ -100,6 +111,7 @@ export interface ExtractedTransactionDraft {
   review: TransactionReview;
   source: TransactionSource;
   responseFormat: ResponseFormatMode;
+  reasoningEffortFallback?: boolean;
 }
 
 export interface AudioTranscriptionInput extends AudioSource {
@@ -1209,6 +1221,30 @@ function providerRejectedResponseFormat(
   );
 }
 
+function providerRejectedReasoningEffort(
+  status: number,
+  responseBody: string,
+): boolean {
+  if (![400, 404, 415, 422].includes(status)) {
+    return false;
+  }
+
+  const inspected = responseBody
+    .slice(0, MAX_PROVIDER_ERROR_INSPECTION_LENGTH)
+    .toLowerCase();
+  const reasoningName = String.raw`reasoning(?:_|\s)effort`;
+  const rejection = String.raw`(?:unsupported|not\s+supported|unknown|unrecognized|unexpected|not\s+permitted|extra_forbidden|invalid(?:_|\s)parameter)`;
+
+  return (
+    new RegExp(`${reasoningName}[\\s\\S]{0,160}${rejection}`).test(
+      inspected,
+    ) ||
+    new RegExp(`${rejection}[\\s\\S]{0,160}${reasoningName}`).test(
+      inspected,
+    )
+  );
+}
+
 function responseFormat(
   mode: Exclude<ResponseFormatMode, 'prompt_only'>,
 ): Record<string, unknown> {
@@ -1278,6 +1314,7 @@ function chatRequestBody(
   config: OpenAICompatibleConfig,
   input: TransactionExtractionInput,
   mode: ResponseFormatMode,
+  sendReasoningEffort = true,
 ): Record<string, unknown> {
   const userPrompt =
     extractionUserPrompt(input) +
@@ -1318,7 +1355,26 @@ function chatRequestBody(
     body.response_format = responseFormat(mode);
   }
 
+  if (
+    sendReasoningEffort &&
+    config.reasoningEffort &&
+    config.reasoningEffort !== 'auto'
+  ) {
+    body.reasoning_effort = config.reasoningEffort;
+  }
+
   return body;
+}
+
+async function reportReasoningEffortSupport(
+  config: ReturnType<typeof validateConfig>,
+  support: Exclude<ReasoningEffortSupport, 'unknown'>,
+): Promise<void> {
+  try {
+    await config.onReasoningEffortSupport?.(support);
+  } catch {
+    // Capability metadata must never block a valid AI response.
+  }
 }
 
 function assistantText(responseValue: unknown): string {
@@ -1393,20 +1449,52 @@ async function extractTransactionDraft(
     'json_object',
     'prompt_only',
   ];
+  const hasExplicitReasoning =
+    Boolean(config.reasoningEffort) && config.reasoningEffort !== 'auto';
+  let sendReasoningEffort =
+    hasExplicitReasoning &&
+    config.reasoningEffortSupport !== 'unsupported';
+  let reasoningEffortFallback =
+    hasExplicitReasoning &&
+    config.reasoningEffortSupport === 'unsupported';
 
   for (let index = 0; index < modes.length; index += 1) {
     const mode = modes[index];
-    const response = await fetchTextWithTimeout(
-      fetcher,
-      url,
-      {
-        method: 'POST',
-        headers: requestHeaders(config, 'application/json'),
-        body: JSON.stringify(chatRequestBody(config, input, mode)),
-      },
-      config.timeoutMs,
-      input.signal,
-    );
+    let response: TextResponse;
+
+    while (true) {
+      response = await fetchTextWithTimeout(
+        fetcher,
+        url,
+        {
+          method: 'POST',
+          headers: requestHeaders(config, 'application/json'),
+          body: JSON.stringify(
+            chatRequestBody(
+              config,
+              input,
+              mode,
+              sendReasoningEffort,
+            ),
+          ),
+        },
+        config.timeoutMs,
+        input.signal,
+      );
+
+      assertNotAborted(input.signal);
+      if (
+        !response.ok &&
+        sendReasoningEffort &&
+        providerRejectedReasoningEffort(response.status, response.body)
+      ) {
+        sendReasoningEffort = false;
+        reasoningEffortFallback = true;
+        await reportReasoningEffortSupport(config, 'unsupported');
+        continue;
+      }
+      break;
+    }
 
     const responseBody = response.body;
     assertNotAborted(input.signal);
@@ -1421,6 +1509,10 @@ async function extractTransactionDraft(
       throw providerError(response.status);
     }
 
+    if (sendReasoningEffort) {
+      await reportReasoningEffortSupport(config, 'supported');
+    }
+
     let providerPayload: unknown;
     try {
       providerPayload = JSON.parse(responseBody);
@@ -1433,7 +1525,10 @@ async function extractTransactionDraft(
 
     const parsed = parseJsonObject(assistantText(providerPayload));
     assertNotAborted(input.signal);
-    return validateTransactionDraft(parsed, input, mode);
+    return {
+      ...validateTransactionDraft(parsed, input, mode),
+      reasoningEffortFallback,
+    };
   }
 
   throw new AiServiceError(

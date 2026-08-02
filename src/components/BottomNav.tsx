@@ -5,12 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppTheme, radii, spacing, typography } from '../theme';
 
-export type AppTab = 'home' | 'records' | 'capture' | 'stats' | 'settings';
+export type AppTab = 'home' | 'records' | 'stats' | 'settings';
+export type AppDestination = AppTab | 'capture';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
 const tabs: Array<{
-  key: AppTab;
+  key: AppDestination;
   label: string;
   icon: IconName;
   selectedIcon: IconName;
@@ -24,7 +25,7 @@ const tabs: Array<{
 
 type BottomNavProps = {
   activeTab: AppTab;
-  onChange: (tab: AppTab) => void;
+  onChange: (destination: AppDestination) => void;
   theme: AppTheme;
 };
 
@@ -49,9 +50,9 @@ export function BottomNav({ activeTab, onChange, theme }: BottomNavProps) {
           return (
             <Pressable
               key={tab.key}
-              accessibilityRole="tab"
+              accessibilityRole={isCapture ? 'button' : 'tab'}
               accessibilityLabel={tab.label}
-              accessibilityState={{ selected }}
+              accessibilityState={isCapture ? undefined : { selected }}
               onPress={() => onChange(tab.key)}
               testID={`nav-${tab.key}`}
               style={({ pressed }) => [

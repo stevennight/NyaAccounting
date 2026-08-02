@@ -288,9 +288,22 @@ export interface AiSettings {
   endpoint: string;
   model: string;
   transcriptionModel?: string;
+  reasoningEffort: AiReasoningEffort;
   requestTimeoutMs: number;
   sendImages: boolean;
 }
+
+export const AI_REASONING_EFFORTS = [
+  'auto',
+  'none',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+
+export type AiReasoningEffort = (typeof AI_REASONING_EFFORTS)[number];
 
 export interface AppSettings {
   schemaVersion: 1;

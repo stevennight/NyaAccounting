@@ -72,7 +72,7 @@ import {
 } from '../domain/types';
 import {
   AiServiceError,
-  createAiService,
+  createCapabilityAwareAiService,
   getApiKey,
   MediaPreparationError,
   prepareScreenshot,
@@ -80,6 +80,7 @@ import {
 } from '../services';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
+import { useHardwareBack } from '../hooks/useHardwareBack';
 
 export type CaptureScreenProps = {
   theme: AppTheme;
@@ -608,6 +609,24 @@ export function CaptureScreen({
     ]);
   }, [draft, hasInput, leaveCapture]);
 
+  const returnToInput = useCallback(() => {
+    setDraft(null);
+    setDuplicateCandidates([]);
+    setNotice(null);
+  }, []);
+
+  useHardwareBack(() => {
+    if (saving) {
+      return true;
+    }
+    if (draft) {
+      returnToInput();
+    } else {
+      requestCancel();
+    }
+    return true;
+  });
+
   const amountError = useMemo(() => {
     if (!draft) {
       return undefined;
@@ -692,10 +711,11 @@ export function CaptureScreen({
     if (!apiKey) {
       throw new Error('尚未保存 API Key；可前往设置配置，或直接手动填写。');
     }
-    return createAiService({
+    return createCapabilityAwareAiService({
       baseUrl: settings.ai.endpoint,
       model: settings.ai.model,
       transcriptionModel: settings.ai.transcriptionModel,
+      reasoningEffort: settings.ai.reasoningEffort,
       apiKey,
       timeoutMs: settings.ai.requestTimeoutMs,
     });
@@ -1042,10 +1062,17 @@ export function CaptureScreen({
         },
       );
       beginReview(normalized);
-      if (partialInputWarning) {
+      const compatibilityWarning = extracted.reasoningEffortFallback
+        ? '当前接口或模型不支持所选思考级别，已按自动模式完成识别。'
+        : null;
+      const recognitionWarnings = [
+        partialInputWarning,
+        compatibilityWarning,
+      ].filter((value): value is string => Boolean(value));
+      if (recognitionWarnings.length > 0) {
         setNotice({
           tone: 'warning',
-          message: partialInputWarning,
+          message: recognitionWarnings.join(' '),
         });
       }
     } catch (error) {
@@ -1324,16 +1351,9 @@ export function CaptureScreen({
           theme={theme}
           title="确认账目"
           subtitle="保存前核对识别结果"
-          action={
-            <AppButton
-              theme={theme}
-              label="取消"
-              onPress={requestCancel}
-              variant="quiet"
-              compact
-              disabled={saving}
-            />
-          }
+          onBack={returnToInput}
+          backLabel="返回录入"
+          backDisabled={saving}
         />
 
         {notice ? (
@@ -1705,11 +1725,7 @@ export function CaptureScreen({
             theme={theme}
             label="返回输入"
             icon="arrow-back"
-            onPress={() => {
-              setDraft(null);
-              setDuplicateCandidates([]);
-              setNotice(null);
-            }}
+            onPress={returnToInput}
             variant="secondary"
           />
         </View>
@@ -1732,16 +1748,9 @@ export function CaptureScreen({
             ? '截图、文字和语音可以组合'
             : '截图和文字可以一起识别'
         }
-        action={
-          <AppButton
-            theme={theme}
-            label="取消"
-            onPress={requestCancel}
-            variant="quiet"
-            compact
-            disabled={saving}
-          />
-        }
+        onBack={requestCancel}
+        backLabel="返回上一页"
+        backDisabled={saving}
       />
 
       {notice ? (

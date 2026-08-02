@@ -4,11 +4,23 @@ const Module = require('node:module');
 
 const originalModuleLoad = Module._load;
 const platform = { OS: 'web' };
+const asyncStorageValues = new Map();
 
 Module._load = function loadWithExpoStubs(request, parent, isMain) {
   if (request === 'expo/fetch') {
     return {
       fetch: (...args) => globalThis.fetch(...args),
+    };
+  }
+  if (request === '@react-native-async-storage/async-storage') {
+    return {
+      getItem: async (key) => asyncStorageValues.get(key) ?? null,
+      setItem: async (key, value) => {
+        asyncStorageValues.set(key, value);
+      },
+      removeItem: async (key) => {
+        asyncStorageValues.delete(key);
+      },
     };
   }
   if (request === 'expo-file-system') {
@@ -42,6 +54,12 @@ const {
   createAiService,
   validateTransactionDraft,
 } = require('../.test-build/services/ai.js');
+const {
+  createCapabilityAwareAiService,
+  getReasoningEffortSupport,
+  REASONING_CAPABILITY_TTL_MS,
+  setReasoningEffortSupport,
+} = require('../.test-build/services/aiCapabilities.js');
 
 after(() => {
   Module._load = originalModuleLoad;
@@ -98,6 +116,168 @@ function response(body, status = 200) {
 }
 
 describe('AI extraction compatibility', () => {
+  test('sends an explicit reasoning effort when configured', async () => {
+    let requestBody;
+    const fetcher = async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return response(completionResponse(extractedTransaction()));
+    };
+    const service = createAiService({
+      ...baseConfig,
+      reasoningEffort: 'none',
+      fetcher,
+    });
+
+    await service.extractTransaction({ text: '午餐 32 元' });
+
+    assert.equal(requestBody.reasoning_effort, 'none');
+  });
+
+  test('retries the same response format once without unsupported reasoning', async () => {
+    const calls = [];
+    const supportEvents = [];
+    const fetcher = async (_url, init) => {
+      calls.push(JSON.parse(init.body));
+      if (calls.length === 1) {
+        return response(
+          JSON.stringify({
+            error: {
+              message:
+                "Unsupported parameter: 'reasoning_effort' is not supported with this model.",
+            },
+          }),
+          400,
+        );
+      }
+      return response(completionResponse(extractedTransaction()));
+    };
+    const service = createAiService({
+      ...baseConfig,
+      reasoningEffort: 'none',
+      onReasoningEffortSupport: (support) => supportEvents.push(support),
+      fetcher,
+    });
+
+    const result = await service.extractTransaction({ text: '午餐 32 元' });
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].reasoning_effort, 'none');
+    assert.equal('reasoning_effort' in calls[1], false);
+    assert.equal(calls[0].response_format.type, 'json_schema');
+    assert.equal(calls[1].response_format.type, 'json_schema');
+    assert.deepEqual(supportEvents, ['unsupported']);
+    assert.equal(result.reasoningEffortFallback, true);
+  });
+
+  test('does not hide unrelated provider rejections behind reasoning fallback', async () => {
+    let callCount = 0;
+    const fetcher = async () => {
+      callCount += 1;
+      return response(
+        JSON.stringify({ error: { message: 'The requested model was not found.' } }),
+        400,
+      );
+    };
+    const service = createAiService({
+      ...baseConfig,
+      reasoningEffort: 'none',
+      fetcher,
+    });
+
+    await assert.rejects(
+      service.extractTransaction({ text: '午餐 32 元' }),
+      (error) =>
+        error instanceof AiServiceError && error.code === 'provider_rejected',
+    );
+    assert.equal(callCount, 1);
+  });
+
+  test('uses cached unsupported capability on later service instances', async () => {
+    asyncStorageValues.clear();
+    const firstCalls = [];
+    const firstService = await createCapabilityAwareAiService({
+      ...baseConfig,
+      reasoningEffort: 'none',
+      fetcher: async (_url, init) => {
+        firstCalls.push(JSON.parse(init.body));
+        if (firstCalls.length === 1) {
+          return response(
+            JSON.stringify({
+              error: {
+                message: 'Unknown parameter: reasoning_effort',
+              },
+            }),
+            400,
+          );
+        }
+        return response(completionResponse(extractedTransaction()));
+      },
+    });
+    await firstService.extractTransaction({ text: '午餐 32 元' });
+
+    let secondRequest;
+    const secondService = await createCapabilityAwareAiService({
+      ...baseConfig,
+      reasoningEffort: 'none',
+      fetcher: async (_url, init) => {
+        secondRequest = JSON.parse(init.body);
+        return response(completionResponse(extractedTransaction()));
+      },
+    });
+    const secondResult = await secondService.extractTransaction({
+      text: '晚餐 48 元',
+    });
+
+    assert.equal(firstCalls.length, 2);
+    assert.equal('reasoning_effort' in secondRequest, false);
+    assert.equal(secondResult.reasoningEffortFallback, true);
+  });
+
+  test('expires cached reasoning capability after seven days', async () => {
+    asyncStorageValues.clear();
+    const checkedAt = 10_000;
+    await setReasoningEffortSupport(
+      baseConfig.baseUrl,
+      baseConfig.model,
+      'unsupported',
+      checkedAt,
+    );
+
+    assert.equal(
+      await getReasoningEffortSupport(
+        baseConfig.baseUrl,
+        baseConfig.model,
+        checkedAt + REASONING_CAPABILITY_TTL_MS - 1,
+      ),
+      'unsupported',
+    );
+    assert.equal(
+      await getReasoningEffortSupport(
+        baseConfig.baseUrl,
+        baseConfig.model,
+        checkedAt + REASONING_CAPABILITY_TTL_MS,
+      ),
+      'unknown',
+    );
+  });
+
+  test('omits reasoning effort in automatic compatibility mode', async () => {
+    let requestBody;
+    const fetcher = async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return response(completionResponse(extractedTransaction()));
+    };
+    const service = createAiService({
+      ...baseConfig,
+      reasoningEffort: 'auto',
+      fetcher,
+    });
+
+    await service.extractTransaction({ text: '午餐 32 元' });
+
+    assert.equal('reasoning_effort' in requestBody, false);
+  });
+
   test('falls back from json_schema to json_object and then prompt-only JSON', async () => {
     const calls = [];
     const fetcher = async (_url, init) => {

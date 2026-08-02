@@ -10,6 +10,7 @@ import { getCategoryDefinition } from '../domain/categories';
 import { formatLocalDate, formatMonthKey } from '../domain/date';
 import { formatMoneyMinor } from '../domain/money';
 import { compareTransactionDateTime } from '../domain/transactions';
+import type { Transaction } from '../domain/types';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
 import { AppButton } from '../components/AppButton';
@@ -26,6 +27,7 @@ type HomeScreenProps = {
   onCapture: () => void;
   onOpenSettings: () => void;
   onOpenStats: () => void;
+  onOpenTransaction: (transaction: Transaction) => void;
 };
 
 export function HomeScreen({
@@ -33,6 +35,7 @@ export function HomeScreen({
   onCapture,
   onOpenSettings,
   onOpenStats,
+  onOpenTransaction,
 }: HomeScreenProps) {
   const { dataset, persistenceError } = useAppStore();
   const today = new Date();
@@ -265,7 +268,12 @@ export function HomeScreen({
             ]}
           >
             {monthTransactions.slice(0, 5).map((transaction) => (
-              <TransactionRow key={transaction.id} transaction={transaction} theme={theme} />
+              <TransactionRow
+                key={transaction.id}
+                transaction={transaction}
+                theme={theme}
+                onPress={() => onOpenTransaction(transaction)}
+              />
             ))}
           </View>
         )}

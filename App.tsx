@@ -11,7 +11,11 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { AppTab, BottomNav } from './src/components/BottomNav';
+import {
+  AppDestination,
+  AppTab,
+  BottomNav,
+} from './src/components/BottomNav';
 import { Transaction } from './src/domain/types';
 import { CaptureScreen } from './src/screens/CaptureScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -20,6 +24,7 @@ import { RecurringExpensesScreen } from './src/screens/RecurringExpensesScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
 import { TransactionEditScreen } from './src/screens/TransactionEditScreen';
+import { useHardwareBack } from './src/hooks/useHardwareBack';
 import {
   AppStoreProvider,
   useAppStore,
@@ -35,10 +40,21 @@ function AppContent() {
     updateTransaction,
     removeTransaction,
   } = useAppStore();
-  const [activeTab, setActiveTab] = useState<AppTab>('home');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [managingRecurringExpenses, setManagingRecurringExpenses] =
-    useState(false);
+  type AppRoute =
+    | { type: 'tab'; tab: AppTab }
+    | { type: 'capture' }
+    | { type: 'transaction'; transactionId: string }
+    | { type: 'recurring-expenses'; startCreating: boolean };
+  const [routes, setRoutes] = useState<AppRoute[]>([
+    { type: 'tab', tab: 'home' },
+  ]);
+  const currentRoute = routes[routes.length - 1];
+  const activeTab =
+    [...routes]
+      .reverse()
+      .find((route): route is Extract<AppRoute, { type: 'tab' }> =>
+        route.type === 'tab',
+      )?.tab ?? 'home';
 
   const effectiveColorScheme =
     dataset.settings.theme === 'system'
@@ -48,44 +64,73 @@ function AppContent() {
     () => getTheme(effectiveColorScheme),
     [effectiveColorScheme],
   );
-  const editingTransaction = editingId
-    ? dataset.transactions.find((transaction) => transaction.id === editingId)
+  const editingTransaction = currentRoute.type === 'transaction'
+    ? dataset.transactions.find(
+        (transaction) => transaction.id === currentRoute.transactionId,
+      )
     : undefined;
 
   useEffect(() => {
-    if (editingId && !editingTransaction) {
-      setEditingId(null);
+    if (currentRoute.type === 'transaction' && !editingTransaction) {
+      setRoutes((current) => current.slice(0, -1));
     }
-  }, [editingId, editingTransaction]);
+  }, [currentRoute.type, editingTransaction]);
 
-  const openCapture = () => {
-    setEditingId(null);
-    setManagingRecurringExpenses(false);
-    setActiveTab('capture');
+  const goBack = () => {
+    setRoutes((current) =>
+      current.length > 1 ? current.slice(0, -1) : current,
+    );
   };
 
-  const changeTab = (tab: AppTab) => {
-    setEditingId(null);
-    setManagingRecurringExpenses(false);
-    setActiveTab(tab);
+  useHardwareBack(
+    () => {
+      if (routes.length <= 1) {
+        return false;
+      }
+      goBack();
+      return true;
+    },
+    currentRoute.type === 'tab',
+  );
+
+  const openCapture = () => {
+    setRoutes((current) => [...current, { type: 'capture' }]);
+  };
+
+  const changeDestination = (destination: AppDestination) => {
+    if (destination === 'capture') {
+      openCapture();
+      return;
+    }
+    setRoutes((current) => {
+      if (
+        currentRoute.type === 'tab' &&
+        currentRoute.tab === destination
+      ) {
+        return current;
+      }
+      const previousTabs = current.filter(
+        (route) => route.type !== 'tab' || route.tab !== destination,
+      );
+      return [...previousTabs, { type: 'tab', tab: destination }];
+    });
   };
 
   const openTransaction = (transaction: Transaction) => {
-    setManagingRecurringExpenses(false);
-    setActiveTab('records');
-    setEditingId(transaction.id);
+    setRoutes((current) => [
+      ...current,
+      { type: 'transaction', transactionId: transaction.id },
+    ]);
   };
 
   const saveTransaction = async (transaction: Transaction) => {
     await updateTransaction(transaction);
-    setEditingId(null);
-    setActiveTab('records');
+    goBack();
   };
 
   const deleteTransaction = async (id: string) => {
     await removeTransaction(id);
-    setEditingId(null);
-    setActiveTab('records');
+    goBack();
   };
 
   if (!hydrated || (!iconsLoaded && !iconFontError)) {
@@ -121,14 +166,15 @@ function AppContent() {
   }
 
   let content;
-  if (managingRecurringExpenses) {
+  if (currentRoute.type === 'recurring-expenses') {
     content = (
       <RecurringExpensesScreen
         theme={theme}
-        onBack={() => setManagingRecurringExpenses(false)}
+        onBack={goBack}
+        startCreating={currentRoute.startCreating}
       />
     );
-  } else if (editingTransaction) {
+  } else if (currentRoute.type === 'transaction' && editingTransaction) {
     content = (
       <TransactionEditScreen
         theme={theme}
@@ -136,18 +182,27 @@ function AppContent() {
         recurringExpenses={dataset.recurringExpenses}
         onSave={saveTransaction}
         onDelete={deleteTransaction}
-        onCancel={() => setEditingId(null)}
+        onCancel={goBack}
+      />
+    );
+  } else if (currentRoute.type === 'capture') {
+    content = (
+      <CaptureScreen
+        theme={theme}
+        onSaved={goBack}
+        onCancel={goBack}
       />
     );
   } else {
-    switch (activeTab) {
+    switch (currentRoute.type === 'tab' ? currentRoute.tab : 'home') {
       case 'home':
         content = (
           <HomeScreen
             theme={theme}
             onCapture={openCapture}
-            onOpenSettings={() => changeTab('settings')}
-            onOpenStats={() => changeTab('stats')}
+            onOpenSettings={() => changeDestination('settings')}
+            onOpenStats={() => changeDestination('stats')}
+            onOpenTransaction={openTransaction}
           />
         );
         break;
@@ -160,15 +215,6 @@ function AppContent() {
           />
         );
         break;
-      case 'capture':
-        content = (
-          <CaptureScreen
-            theme={theme}
-            onSaved={() => changeTab('home')}
-            onCancel={() => changeTab('home')}
-          />
-        );
-        break;
       case 'stats':
         content = <StatsScreen theme={theme} />;
         break;
@@ -177,7 +223,13 @@ function AppContent() {
           <SettingsScreen
             theme={theme}
             onOpenRecurringExpenses={() =>
-              setManagingRecurringExpenses(true)
+              setRoutes((current) => [
+                ...current,
+                {
+                  type: 'recurring-expenses',
+                  startCreating: dataset.recurringExpenses.length === 0,
+                },
+              ])
             }
           />
         );
@@ -188,12 +240,10 @@ function AppContent() {
   return (
     <View style={[styles.app, { backgroundColor: theme.colors.background }]}>
       {content}
-      {!editingTransaction &&
-      !managingRecurringExpenses &&
-      activeTab !== 'capture' ? (
+      {currentRoute.type === 'tab' ? (
         <BottomNav
           activeTab={activeTab}
-          onChange={changeTab}
+          onChange={changeDestination}
           theme={theme}
         />
       ) : null}

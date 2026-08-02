@@ -42,10 +42,12 @@ import {
 } from '../domain/types';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
+import { useHardwareBack } from '../hooks/useHardwareBack';
 
 type RecurringExpensesScreenProps = {
   theme: AppTheme;
   onBack: () => void;
+  startCreating?: boolean;
 };
 
 type Notice = {
@@ -224,6 +226,7 @@ function confirmAction(
 export function RecurringExpensesScreen({
   theme,
   onBack,
+  startCreating = false,
 }: RecurringExpensesScreenProps) {
   const {
     dataset,
@@ -234,7 +237,7 @@ export function RecurringExpensesScreen({
   const initialBlank = createBlankForm(dataset.settings);
   const [form, setForm] = useState<FormState>(initialBlank);
   const [initialForm, setInitialForm] = useState<FormState>(initialBlank);
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(startCreating);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState(false);
@@ -323,6 +326,15 @@ export function RecurringExpensesScreen({
     }
     closeFormImmediately();
   };
+
+  useHardwareBack(() => {
+    if (formOpen) {
+      void requestCloseForm();
+    } else {
+      onBack();
+    }
+    return true;
+  });
 
   const beginCreate = () => {
     const nextForm = createBlankForm(dataset.settings);
@@ -472,15 +484,9 @@ export function RecurringExpensesScreen({
           theme={theme}
           title={editingExpense ? '编辑固定支出' : '新增固定支出'}
           subtitle="按计划预留预算，不维护支付账户余额"
-          action={
-            <IconButton
-              theme={theme}
-              icon="close"
-              label="返回列表"
-              onPress={() => void requestCloseForm()}
-              disabled={saving || deletingId !== null}
-            />
-          }
+          onBack={() => void requestCloseForm()}
+          backLabel="返回固定支出列表"
+          backDisabled={saving || deletingId !== null}
         />
 
         {notice ? (
@@ -755,14 +761,8 @@ export function RecurringExpensesScreen({
         theme={theme}
         title="固定支出"
         subtitle="订阅、房租和周期性服务"
-        action={
-          <IconButton
-            theme={theme}
-            icon="arrow-back"
-            label="返回"
-            onPress={onBack}
-          />
-        }
+        onBack={onBack}
+        backLabel="返回设置"
       />
 
       {notice ? (

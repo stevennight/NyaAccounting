@@ -2,17 +2,38 @@ import { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { AppTheme, spacing, typography } from '../theme';
+import { IconButton } from './IconButton';
 
 type PageHeaderProps = {
   theme: AppTheme;
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  onBack?: () => void;
+  backLabel?: string;
+  backDisabled?: boolean;
 };
 
-export function PageHeader({ theme, title, subtitle, action }: PageHeaderProps) {
+export function PageHeader({
+  theme,
+  title,
+  subtitle,
+  action,
+  onBack,
+  backLabel = '返回',
+  backDisabled = false,
+}: PageHeaderProps) {
   return (
     <View style={styles.row}>
+      {onBack ? (
+        <IconButton
+          theme={theme}
+          icon="arrow-back"
+          label={backLabel}
+          onPress={onBack}
+          disabled={backDisabled}
+        />
+      ) : null}
       <View style={styles.copy}>
         <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
         {subtitle ? (
@@ -28,7 +49,7 @@ const styles = StyleSheet.create({
   row: {
     minHeight: 58,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
     marginBottom: spacing.xl,
@@ -46,4 +67,3 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
 });
-

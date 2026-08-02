@@ -21,12 +21,14 @@ import {
   loadDataset,
   saveDataset,
 } from '../services/storage';
+import { clearAiCapabilityCache } from '../services/aiCapabilities';
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,
   endpoint: 'https://api.openai.com/v1',
   model: 'gpt-4.1-mini',
   transcriptionModel: 'gpt-4o-mini-transcribe',
+  reasoningEffort: 'auto',
   requestTimeoutMs: 45_000,
   sendImages: true,
 };
@@ -279,7 +281,12 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
           transactions: [],
           recurringExpenses: [],
         }),
-        deleteDataset,
+        async () => {
+          await Promise.all([
+            deleteDataset(),
+            clearAiCapabilityCache(),
+          ]);
+        },
       ),
     [enqueueMutation],
   );

@@ -30,6 +30,7 @@ import {
   TransactionStatus,
 } from '../domain/types';
 import { AppTheme, spacing, typography } from '../theme';
+import { useHardwareBack } from '../hooks/useHardwareBack';
 import { AppButton } from '../components/AppButton';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
 import { FormField } from '../components/FormField';
@@ -342,6 +343,11 @@ export function TransactionEditScreen({
     ]);
   };
 
+  useHardwareBack(() => {
+    requestCancel();
+    return true;
+  });
+
   return (
     <Screen
       theme={theme}
@@ -353,16 +359,9 @@ export function TransactionEditScreen({
         theme={theme}
         title="编辑账目"
         subtitle={`来源：${transaction.source} · 创建后可随时修正`}
-        action={
-          <AppButton
-            label="取消"
-            onPress={requestCancel}
-            theme={theme}
-            variant="quiet"
-            compact
-            disabled={saving || deleting}
-          />
-        }
+        onBack={requestCancel}
+        backLabel="返回账目"
+        backDisabled={saving || deleting}
       />
 
       {notice ? (
