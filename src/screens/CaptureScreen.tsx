@@ -15,6 +15,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -111,6 +112,14 @@ type ReviewQueueItem = {
   asset?: ImagePicker.ImagePickerAsset;
   draft: TransactionDraft | null;
   error?: string;
+};
+
+type RecognitionProgress = {
+  total: number;
+  current: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
 };
 
 type PermissionNotice = {
@@ -344,6 +353,59 @@ function cancelledRequestError(): AiServiceError {
   return new AiServiceError('aborted', 'The AI request was cancelled.');
 }
 
+function RecognitionProgressPanel({
+  theme,
+  progress,
+}: {
+  theme: AppTheme;
+  progress: RecognitionProgress;
+}) {
+  const percent = progress.total > 0
+    ? Math.round((progress.completed / progress.total) * 100)
+    : 0;
+  const current = Math.min(Math.max(progress.current, 1), progress.total);
+
+  return (
+    <View
+      style={[
+        styles.recognitionProgress,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+        },
+      ]}
+      testID="capture-recognition-progress"
+    >
+      <View style={styles.progressHeader}>
+        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
+          正在识别第 {current}/{progress.total} 张截图
+        </Text>
+        <Text style={[styles.progressPercent, { color: theme.colors.primary }]}>
+          {percent}%
+        </Text>
+      </View>
+      <View
+        style={[styles.progressTrack, { backgroundColor: theme.colors.surfaceMuted }]}
+        accessibilityRole="progressbar"
+        accessibilityValue={{ min: 0, max: 100, now: percent }}
+        testID="capture-recognition-progress-bar"
+      >
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${percent}%`, backgroundColor: theme.colors.primary },
+          ]}
+        />
+      </View>
+      <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
+        已完成 {progress.completed}/{progress.total} 张
+        {progress.succeeded > 0 ? ` · 成功 ${progress.succeeded}` : ''}
+        {progress.failed > 0 ? ` · 失败 ${progress.failed}` : ''}
+      </Text>
+    </View>
+  );
+}
+
 export function CaptureScreen({
   theme,
   onSaved,
@@ -361,6 +423,8 @@ export function CaptureScreen({
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [draft, setDraft] = useState<TransactionDraft | null>(null);
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([]);
+  const [recognitionProgress, setRecognitionProgress] =
+    useState<RecognitionProgress | null>(null);
   const [amountInput, setAmountInput] = useState('');
   const [timeInput, setTimeInput] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -456,6 +520,7 @@ export function CaptureScreen({
       }
       setDraft(null);
       setReviewQueue([]);
+      setRecognitionProgress(null);
       setAmountInput('');
       setTimeInput('');
       setDuplicateCandidates([]);
@@ -586,6 +651,31 @@ export function CaptureScreen({
   const activeImage = imageItems.find((item) => item.id === activeImageId) ??
     imageItems[0] ??
     null;
+  const activeImageIndex = activeImage
+    ? imageItems.findIndex((item) => item.id === activeImage.id)
+    : -1;
+  const selectImage = useCallback(
+    (index: number) => {
+      const item = imageItems[index];
+      if (item) {
+        setActiveImageId(item.id);
+      }
+    },
+    [imageItems],
+  );
+  const moveActiveImage = useCallback(
+    (offset: number) => {
+      if (activeImageIndex < 0) {
+        return;
+      }
+      const nextIndex = Math.min(
+        imageItems.length - 1,
+        Math.max(0, activeImageIndex + offset),
+      );
+      selectImage(nextIndex);
+    },
+    [activeImageIndex, imageItems.length, selectImage],
+  );
   const canRecognize = Boolean(
     textInput.trim() ||
       imageItems.some(
@@ -687,6 +777,7 @@ export function CaptureScreen({
   const returnToInput = useCallback(() => {
     setDraft(null);
     setReviewQueue([]);
+    setRecognitionProgress(null);
     setDuplicateCandidates([]);
     setNotice(null);
   }, []);
@@ -861,17 +952,19 @@ export function CaptureScreen({
     cancelExtraction();
     setImageItems((current) => {
       const targetId = imageId ?? activeImageId ?? current[0]?.id;
+      const targetIndex = current.findIndex((item) => item.id === targetId);
       const next = current.filter((item) => item.id !== targetId);
       setActiveImageId((selected) => {
         if (selected !== targetId) {
           return selected;
         }
-        return next[0]?.id ?? null;
+        return next[Math.min(Math.max(targetIndex, 0), next.length - 1)]?.id ?? null;
       });
       return next;
     });
     setDraft(null);
     setReviewQueue([]);
+    setRecognitionProgress(null);
     setDuplicateCandidates([]);
   }, [activeImageId, cancelExtraction]);
 
@@ -1057,6 +1150,13 @@ export function CaptureScreen({
     const controller = new AbortController();
     extractionAbortRef.current = controller;
     setRecognizing(true);
+    setRecognitionProgress({
+      total: Math.max(1, imageItems.length),
+      current: 1,
+      completed: 0,
+      succeeded: 0,
+      failed: 0,
+    });
     setNotice(null);
 
     try {
@@ -1110,6 +1210,11 @@ export function CaptureScreen({
 
       for (let index = 0; index < inputs.length; index += 1) {
         const item = inputs[index];
+        setRecognitionProgress((current) =>
+          current
+            ? { ...current, current: index + 1 }
+            : current,
+        );
         let screenshot: Awaited<ReturnType<typeof prepareScreenshot>> | null =
           null;
         try {
@@ -1138,6 +1243,16 @@ export function CaptureScreen({
               draft: null,
               error: message,
             });
+            setRecognitionProgress((current) =>
+              current
+                ? {
+                    ...current,
+                    completed: index + 1,
+                    failed: current.failed + 1,
+                    current: Math.min(index + 2, current.total),
+                  }
+                : current,
+            );
             continue;
           }
 
@@ -1187,6 +1302,16 @@ export function CaptureScreen({
             asset: item.asset,
             draft: normalized,
           });
+          setRecognitionProgress((current) =>
+            current
+              ? {
+                  ...current,
+                  completed: index + 1,
+                  succeeded: current.succeeded + 1,
+                  current: Math.min(index + 2, current.total),
+                }
+              : current,
+          );
           if (extracted.reasoningEffortFallback) {
             compatibilityWarnings.add(
               '当前接口或模型不支持所选思考级别，已按自动模式完成识别。',
@@ -1205,6 +1330,16 @@ export function CaptureScreen({
             draft: null,
             error: message,
           });
+          setRecognitionProgress((current) =>
+            current
+              ? {
+                  ...current,
+                  completed: index + 1,
+                  failed: current.failed + 1,
+                  current: Math.min(index + 2, current.total),
+                }
+              : current,
+          );
         } finally {
           deleteTemporaryUri(screenshot?.uri);
         }
@@ -1217,6 +1352,11 @@ export function CaptureScreen({
         );
       }
 
+      setRecognitionProgress((current) =>
+        current
+          ? { ...current, current: current.total, completed: current.total }
+          : current,
+      );
       setReviewQueue(nextReviewQueue);
       if (nextReviewQueue[0].draft) {
         beginReview(nextReviewQueue[0].draft);
@@ -1257,6 +1397,7 @@ export function CaptureScreen({
         extractionAbortRef.current = null;
         if (mountedRef.current && !leavingRef.current) {
           setRecognizing(false);
+          setRecognitionProgress(null);
         }
       }
     }
@@ -1286,6 +1427,13 @@ export function CaptureScreen({
     const controller = new AbortController();
     extractionAbortRef.current = controller;
     setRecognizing(true);
+    setRecognitionProgress({
+      total: 1,
+      current: 1,
+      completed: 0,
+      succeeded: 0,
+      failed: 0,
+    });
     setNotice(null);
     let screenshot: Awaited<ReturnType<typeof prepareScreenshot>> | null = null;
     try {
@@ -1344,6 +1492,11 @@ export function CaptureScreen({
         },
       );
       const updatedItem = { ...item, draft: normalized, error: undefined };
+      setRecognitionProgress((current) =>
+        current
+          ? { ...current, completed: 1, succeeded: 1 }
+          : current,
+      );
       setReviewQueue((current) =>
         current[0]?.id === item.id ? [updatedItem, ...current.slice(1)] : current,
       );
@@ -1360,6 +1513,11 @@ export function CaptureScreen({
             ? [{ ...current[0], error: `重试失败：${message}` }, ...current.slice(1)]
             : current,
         );
+        setRecognitionProgress((current) =>
+          current
+            ? { ...current, completed: 1, failed: 1 }
+            : current,
+        );
         setNotice({ tone: 'danger', message: `重试失败：${message}` });
       }
     } finally {
@@ -1368,6 +1526,7 @@ export function CaptureScreen({
         extractionAbortRef.current = null;
         if (mountedRef.current && !leavingRef.current) {
           setRecognizing(false);
+          setRecognitionProgress(null);
         }
       }
     }
@@ -1503,6 +1662,7 @@ export function CaptureScreen({
     setVoiceTranscript('');
     setDraft(null);
     setReviewQueue([]);
+    setRecognitionProgress(null);
     setAmountInput('');
     setTimeInput('');
     setDuplicateCandidates([]);
@@ -1663,7 +1823,7 @@ export function CaptureScreen({
             tone="warning"
             message={failedReviewItem.error ?? '这笔截图识别失败，请重试。'}
           />
-          {failedAsset ? (
+        {failedAsset ? (
             <Image
               source={{ uri: failedAsset.uri }}
               resizeMode="contain"
@@ -1673,6 +1833,12 @@ export function CaptureScreen({
               ]}
               accessibilityLabel="识别失败的消费截图"
               testID="capture-failed-screenshot"
+            />
+          ) : null}
+          {recognizing && recognitionProgress ? (
+            <RecognitionProgressPanel
+              theme={theme}
+              progress={recognitionProgress}
             />
           ) : null}
           <Text style={[styles.help, { color: theme.colors.textMuted }]}>
@@ -2125,6 +2291,15 @@ export function CaptureScreen({
         </View>
       ) : null}
 
+      {recognizing && recognitionProgress ? (
+        <View style={styles.noticeSpacing}>
+          <RecognitionProgressPanel
+            theme={theme}
+            progress={recognitionProgress}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.section}>
         <View
           style={[
@@ -2144,7 +2319,7 @@ export function CaptureScreen({
             }
             subtitle={
               imageItems.length > 0
-                ? '点击缩略图切换，每张截图都可以单独补充文字'
+                ? '横向滑动缩略图选择，左右切换并逐张补充文字'
                 : '可一次选择多张，再逐张补充说明'
             }
             action={
@@ -2160,14 +2335,22 @@ export function CaptureScreen({
           />
           {imageItems.length > 0 ? (
             <>
-              <View style={styles.imageList}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.imageStrip}
+                testID="capture-image-strip"
+              >
                 {imageItems.map((item, index) => {
                   const selected = item.id === activeImage?.id;
                   return (
-                    <View
+                    <Pressable
                       key={item.id}
+                      onPress={() => selectImage(index)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`选择第 ${index + 1} 张截图`}
                       style={[
-                        styles.imageItemRow,
+                        styles.imageTile,
                         {
                           borderColor: selected
                             ? theme.colors.primary
@@ -2178,50 +2361,55 @@ export function CaptureScreen({
                         },
                       ]}
                     >
-                      <Pressable
-                        onPress={() => setActiveImageId(item.id)}
-                        style={styles.imageItemSelect}
-                        accessibilityRole="button"
-                        accessibilityLabel={`选择第 ${index + 1} 张截图`}
-                      >
-                        <Image
-                          source={{ uri: item.asset.uri }}
-                          resizeMode="cover"
-                          style={styles.thumbnail}
-                        />
-                        <View style={styles.imageItemText}>
-                          <Text
-                            style={[
-                              styles.fieldLabel,
-                              { color: theme.colors.text },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            第 {index + 1} 张截图
-                          </Text>
-                          <Text
-                            style={[
-                              styles.mediaMeta,
-                              { color: theme.colors.textMuted },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {item.text.trim() ? '已填写补充文字' : '待补充文字（可选）'}
-                          </Text>
-                        </View>
-                      </Pressable>
-                      <IconButton
-                        theme={theme}
-                        icon="close-circle-outline"
-                        label={`移除第 ${index + 1} 张截图`}
-                        onPress={() => removeImage(item.id)}
+                      <Image
+                        source={{ uri: item.asset.uri }}
+                        resizeMode="cover"
+                        style={styles.stripThumbnail}
                       />
-                    </View>
+                      <View style={styles.imageTileFooter}>
+                        <Text
+                          style={[styles.imageTileLabel, { color: theme.colors.text }]}
+                          numberOfLines={1}
+                        >
+                          #{index + 1}
+                        </Text>
+                        <Ionicons
+                          name={item.text.trim() ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={16}
+                          color={item.text.trim() ? theme.colors.success : theme.colors.textMuted}
+                        />
+                      </View>
+                    </Pressable>
                   );
                 })}
-              </View>
+              </ScrollView>
+              <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
+                已补充文字 {imageItems.filter((item) => item.text.trim()).length}/{imageItems.length} 张，左右滑动缩略图选择
+              </Text>
               {activeImage ? (
                 <View style={styles.activeImageEditor}>
+                  <View style={styles.imageEditorNavigation}>
+                    <IconButton
+                      theme={theme}
+                      icon="chevron-back"
+                      label="上一张截图"
+                      onPress={() => moveActiveImage(-1)}
+                      disabled={activeImageIndex <= 0}
+                      testID="capture-image-previous"
+                    />
+                    <Text style={[styles.imageEditorIndex, { color: theme.colors.text }]}>
+                      第 {activeImageIndex + 1}/{imageItems.length} 张
+                      {activeImage.text.trim() ? ' · 已填写' : ' · 待补充'}
+                    </Text>
+                    <IconButton
+                      theme={theme}
+                      icon="chevron-forward"
+                      label="下一张截图"
+                      onPress={() => moveActiveImage(1)}
+                      disabled={activeImageIndex < 0 || activeImageIndex >= imageItems.length - 1}
+                      testID="capture-image-next"
+                    />
+                  </View>
                   <Image
                     source={{ uri: activeImage.asset.uri }}
                     resizeMode="contain"
@@ -2514,34 +2702,70 @@ const styles = StyleSheet.create({
     height: 360,
     borderRadius: radii.sm,
   },
-  imageList: {
+  recognitionProgress: {
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
     gap: spacing.sm,
   },
-  imageItemRow: {
-    minHeight: 72,
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  progressPercent: {
+    fontSize: typography.label,
+    fontWeight: '800',
+  },
+  progressTrack: {
+    width: '100%',
+    height: 8,
+    borderRadius: radii.pill,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: radii.pill,
+  },
+  imageStrip: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  imageTile: {
+    width: 76,
     borderWidth: 1,
     borderRadius: radii.sm,
-    padding: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    padding: spacing.xs,
+    gap: spacing.xs,
   },
-  imageItemSelect: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  thumbnail: {
-    width: 56,
-    height: 56,
+  stripThumbnail: {
+    width: 64,
+    height: 64,
     borderRadius: radii.sm,
   },
-  imageItemText: {
-    flex: 1,
-    minWidth: 0,
+  imageTileFooter: {
+    minHeight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.xs,
+  },
+  imageTileLabel: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+  },
+  imageEditorNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  imageEditorIndex: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: typography.label,
+    fontWeight: '700',
   },
   activeImageEditor: {
     gap: spacing.md,

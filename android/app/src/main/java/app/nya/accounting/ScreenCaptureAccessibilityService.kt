@@ -4,14 +4,18 @@ import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.hardware.HardwareBuffer
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import android.content.Intent
 import java.io.File
 import java.io.FileOutputStream
 
 class ScreenCaptureAccessibilityService : AccessibilityService() {
   @Volatile
   private var capturing = false
+  private val mainHandler = Handler(Looper.getMainLooper())
 
   override fun onServiceConnected() {
     super.onServiceConnected()
@@ -19,6 +23,7 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
   }
 
   override fun onDestroy() {
+    mainHandler.removeCallbacksAndMessages(null)
     if (instance === this) {
       instance = null
     }
@@ -41,26 +46,46 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     }
 
     capturing = true
-    takeScreenshot(
-      Display.DEFAULT_DISPLAY,
-      mainExecutor,
-      object : TakeScreenshotCallback {
-        override fun onSuccess(screenshot: ScreenshotResult) {
-          try {
-            saveScreenshot(screenshot)
-          } catch (error: Exception) {
-            deliverError(error.message ?: "无法保存当前页面截图。")
-          } finally {
-            capturing = false
-          }
-        }
+    dismissNotificationShade()
+    // The notification shade closes with an animation. Capture after it has
+    // settled so the system panel is not included in the bitmap.
+    mainHandler.postDelayed({
+      if (capturing && instance === this) {
+        takeScreenshot(
+          Display.DEFAULT_DISPLAY,
+          mainExecutor,
+          object : TakeScreenshotCallback {
+            override fun onSuccess(screenshot: ScreenshotResult) {
+              try {
+                saveScreenshot(screenshot)
+              } catch (error: Exception) {
+                deliverError(error.message ?: "无法保存当前页面截图。")
+              } finally {
+                capturing = false
+              }
+            }
 
-        override fun onFailure(errorCode: Int) {
-          capturing = false
-          deliverError("系统截图失败（错误码 $errorCode），请重试。")
-        }
-      },
-    )
+            override fun onFailure(errorCode: Int) {
+              capturing = false
+              deliverError("系统截图失败（错误码 $errorCode），请重试。")
+            }
+          },
+        )
+      }
+    }, SCREENSHOT_DELAY_MILLIS)
+  }
+
+  private fun dismissNotificationShade() {
+    val dismissed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+    } else {
+      false
+    }
+    if (!dismissed) {
+      runCatching {
+        sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+      }
+    }
   }
 
   private fun saveScreenshot(screenshot: ScreenshotResult) {
@@ -107,6 +132,8 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
   }
 
   companion object {
+    private const val SCREENSHOT_DELAY_MILLIS = 400L
+
     @Volatile
     var instance: ScreenCaptureAccessibilityService? = null
 
