@@ -3,10 +3,16 @@ import {
   PAYMENT_CHANNELS,
   type AiSettings,
   type AppSettings,
+  type CategoryDefinition,
   type CategoryId,
   type PaymentChannel,
 } from './types';
-import { isCategoryId } from './categories';
+import {
+  CATEGORY_DEFINITIONS,
+  cloneCategoryDefinitions,
+  isCategoryId,
+  normalizeCategoryDefinitions,
+} from './categories';
 import { normalizeCurrencyCode } from './money';
 
 export const DEFAULT_AI_SETTINGS: Readonly<AiSettings> = {
@@ -24,6 +30,7 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = {
   currency: 'CNY',
   locale: 'zh-CN',
   monthlyBudgetMinor: 0,
+  categories: cloneCategoryDefinitions(),
   categoryBudgetsMinor: {},
   reserveRecurringExpenses: false,
   budgetWarningRatio: 0.8,
@@ -59,6 +66,7 @@ function safeRatio(value: unknown, fallback: number): number {
 
 function normalizeCategoryBudgets(
   value: unknown,
+  categories: readonly CategoryDefinition[],
 ): Partial<Record<CategoryId, number>> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
@@ -68,7 +76,7 @@ function normalizeCategoryBudgets(
     Object.entries(value)
       .filter(
         (entry): entry is [CategoryId, number] =>
-          isCategoryId(entry[0]) &&
+          isCategoryId(entry[0], categories) &&
           typeof entry[1] === 'number' &&
           Number.isSafeInteger(entry[1]) &&
           entry[1] >= 0,
@@ -77,17 +85,40 @@ function normalizeCategoryBudgets(
   );
 }
 
+function fallbackCategoryId(
+  categories: readonly CategoryDefinition[],
+): CategoryId {
+  return (
+    categories.find((category) => category.id === 'other')?.id ??
+    categories[0]?.id ??
+    'other'
+  );
+}
+
 export function createDefaultAppSettings(
   patch: AppSettingsPatch = {},
 ): AppSettings {
+  const categories = normalizeCategoryDefinitions(
+    patch.categories,
+    CATEGORY_DEFINITIONS,
+  );
+  const defaultCategoryId = isCategoryId(
+    patch.defaultCategoryId,
+    categories,
+  )
+    ? patch.defaultCategoryId
+    : fallbackCategoryId(categories);
+
   return {
     ...DEFAULT_APP_SETTINGS,
     ...patch,
     schemaVersion: 1,
-    categoryBudgetsMinor: {
-      ...DEFAULT_APP_SETTINGS.categoryBudgetsMinor,
-      ...patch.categoryBudgetsMinor,
-    },
+    categories,
+    categoryBudgetsMinor: normalizeCategoryBudgets(
+      patch.categoryBudgetsMinor,
+      categories,
+    ),
+    defaultCategoryId,
     ai: {
       ...DEFAULT_AI_SETTINGS,
       ...patch.ai,
@@ -105,6 +136,7 @@ export function normalizeAppSettings(input: unknown): AppSettings {
     record.ai && typeof record.ai === 'object' && !Array.isArray(record.ai)
       ? (record.ai as Record<string, unknown>)
       : {};
+  const categories = normalizeCategoryDefinitions(record.categories);
   const warningRatio = safeRatio(
     record.budgetWarningRatio,
     DEFAULT_APP_SETTINGS.budgetWarningRatio,
@@ -139,8 +171,10 @@ export function normalizeAppSettings(input: unknown): AppSettings {
       record.monthlyBudgetMinor,
       DEFAULT_APP_SETTINGS.monthlyBudgetMinor,
     ),
+    categories,
     categoryBudgetsMinor: normalizeCategoryBudgets(
       record.categoryBudgetsMinor,
+      categories,
     ),
     reserveRecurringExpenses:
       typeof record.reserveRecurringExpenses === 'boolean'
@@ -148,9 +182,9 @@ export function normalizeAppSettings(input: unknown): AppSettings {
         : DEFAULT_APP_SETTINGS.reserveRecurringExpenses,
     budgetWarningRatio: warningRatio,
     budgetDangerRatio: dangerRatio,
-    defaultCategoryId: isCategoryId(record.defaultCategoryId)
+    defaultCategoryId: isCategoryId(record.defaultCategoryId, categories)
       ? record.defaultCategoryId
-      : DEFAULT_APP_SETTINGS.defaultCategoryId,
+      : fallbackCategoryId(categories),
     defaultPaymentChannel,
     firstDayOfWeek:
       record.firstDayOfWeek === 0 || record.firstDayOfWeek === 1

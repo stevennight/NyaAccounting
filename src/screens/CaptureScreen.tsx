@@ -29,7 +29,6 @@ import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
 import { VOICE_CAPTURE_ENABLED } from '../config/features';
 import {
-  CATEGORY_DEFINITIONS,
   PAYMENT_CHANNEL_LABELS,
   TRANSACTION_KIND_LABELS,
   TRANSACTION_STATUS_LABELS,
@@ -54,7 +53,6 @@ import {
   type DuplicateCandidate,
 } from '../domain';
 import {
-  CATEGORY_IDS,
   FUNDING_INSTRUMENT_TYPES,
   PAYMENT_CHANNELS,
   TRANSACTION_KINDS,
@@ -120,15 +118,6 @@ const statusOptions: Array<ChoiceOption<TransactionStatus>> =
     value,
     label: TRANSACTION_STATUS_LABELS[value],
   }));
-
-const categoryOptions: Array<ChoiceOption<CategoryId>> = CATEGORY_IDS.map(
-  (value) => ({
-    value,
-    label:
-      CATEGORY_DEFINITIONS.find((category) => category.id === value)
-        ?.shortLabel ?? value,
-  }),
-);
 
 const channelOptions: Array<ChoiceOption<PaymentChannel>> =
   PAYMENT_CHANNELS.map((value) => ({
@@ -528,8 +517,16 @@ export function CaptureScreen({
       draft.status === 'confirmed' &&
       (draft.kind === 'expense' || draft.kind === 'refund'),
   );
+  const categoryOptions = useMemo<Array<ChoiceOption<CategoryId>>>(
+    () =>
+      settings.categories.map((category) => ({
+        value: category.id,
+        label: category.shortLabel,
+      })),
+    [settings.categories],
+  );
   const subcategoryOptions = useMemo<Array<ChoiceOption<string>>>(() => {
-    const category = CATEGORY_DEFINITIONS.find(
+    const category = settings.categories.find(
       (definition) =>
         definition.id === (draft?.categoryId ?? settings.defaultCategoryId),
     );
@@ -540,7 +537,7 @@ export function CaptureScreen({
         label: subcategory.label,
       })) ?? []),
     ];
-  }, [draft?.categoryId, settings.defaultCategoryId]);
+  }, [draft?.categoryId, settings.categories, settings.defaultCategoryId]);
   const recurringOptions = useMemo<Array<ChoiceOption<string>>>(
     () => [
       { value: NO_RECURRING_EXPENSE, label: '不关联' },
@@ -657,7 +654,7 @@ export function CaptureScreen({
       ? '时间格式应为 HH:mm 或 HH:mm:ss。'
       : undefined;
   const merchantError =
-    draft && !draft.merchant.trim() ? '请填写商户或消费内容。' : undefined;
+    draft && !draft.merchant.trim() ? '请填写商户。' : undefined;
   const last4Error =
     draft?.fundingInstrument?.last4 &&
     !/^\d{4}$/.test(draft.fundingInstrument.last4)
@@ -676,11 +673,11 @@ export function CaptureScreen({
       };
       return {
         ...next,
-        issues: validateTransactionDraft(next),
+        issues: validateTransactionDraft(next, settings.categories),
       };
     });
     setDuplicateCandidates([]);
-  }, []);
+  }, [settings.categories]);
 
   const beginReview = useCallback((nextDraft: TransactionDraft) => {
     const recurringMatch = nextDraft.recurringExpenseId
@@ -1033,6 +1030,7 @@ export function CaptureScreen({
         screenshot: sendsImage ? screenshot ?? undefined : undefined,
         text: textInput.trim() || undefined,
         voiceTranscript: transcript || undefined,
+        categories: settings.categories,
         todayLocal: formatLocalDate(new Date()),
         locale: settings.locale,
         defaultCurrency: settings.currency,
@@ -1058,6 +1056,7 @@ export function CaptureScreen({
           defaultCategoryId: settings.defaultCategoryId,
           defaultStatus: 'confirmed',
           defaultPaymentChannel: settings.defaultPaymentChannel,
+          categories: settings.categories,
           source,
         },
       );
@@ -1103,6 +1102,7 @@ export function CaptureScreen({
     preparedScreenshot,
     setPreparedScreenshotSafely,
     settings.ai.sendImages,
+    settings.categories,
     settings.currency,
     settings.defaultCategoryId,
     settings.defaultPaymentChannel,
@@ -1116,11 +1116,9 @@ export function CaptureScreen({
   const beginManualEntry = useCallback(() => {
     cancelExtraction();
     cancelTranscription();
-    const manualNote = [
-      textInput.trim() ? `文字：${textInput.trim()}` : null,
-      VOICE_CAPTURE_ENABLED && voiceTranscript.trim()
-        ? `语音：${voiceTranscript.trim()}`
-        : null,
+    const manualDescription = [
+      textInput.trim() || null,
+      VOICE_CAPTURE_ENABLED ? voiceTranscript.trim() || null : null,
     ]
       .filter((value): value is string => Boolean(value))
       .join('\n');
@@ -1135,7 +1133,9 @@ export function CaptureScreen({
         categoryId: settings.defaultCategoryId,
         paymentChannel: settings.defaultPaymentChannel,
         fundingInstrument: settings.defaultFundingInstrument,
-        ...(manualNote ? { note: manualNote } : {}),
+        ...(manualDescription
+          ? { description: manualDescription }
+          : {}),
         source: 'manual',
       },
       {
@@ -1144,6 +1144,7 @@ export function CaptureScreen({
         defaultCategoryId: settings.defaultCategoryId,
         defaultStatus: 'confirmed',
         defaultPaymentChannel: settings.defaultPaymentChannel,
+        categories: settings.categories,
         source: 'manual',
       },
     );
@@ -1153,6 +1154,7 @@ export function CaptureScreen({
     cancelExtraction,
     cancelTranscription,
     settings.currency,
+    settings.categories,
     settings.defaultCategoryId,
     settings.defaultFundingInstrument,
     settings.defaultPaymentChannel,
@@ -1242,7 +1244,9 @@ export function CaptureScreen({
         ...draft,
         time: normalizeLocalTime(timeInput),
       };
-      const result = confirmTransactionDraft(draftToConfirm);
+      const result = confirmTransactionDraft(draftToConfirm, {
+        categories: settings.categories,
+      });
       if (!result.ok) {
         setDraft({
           ...draftToConfirm,
@@ -1320,6 +1324,7 @@ export function CaptureScreen({
       merchantError,
       onSaved,
       resetAfterSave,
+      settings.categories,
       timeError,
       timeInput,
     ],
@@ -1520,7 +1525,7 @@ export function CaptureScreen({
           />
           <FormField
             theme={theme}
-            label="描述（可选）"
+            label="消费内容"
             value={draft.description ?? ''}
             onChangeText={(value) =>
               updateDraft({ description: value || undefined })
@@ -1703,11 +1708,11 @@ export function CaptureScreen({
           ) : null}
           <FormField
             theme={theme}
-            label="备注（可选）"
+            label="备注（仅手动，可选）"
             value={draft.note ?? ''}
             onChangeText={(value) => updateDraft({ note: value || undefined })}
             multiline
-            placeholder="补充需要保留的信息"
+            placeholder="仅供自己补充，不由 AI 生成"
             testID="capture-note"
           />
         </View>

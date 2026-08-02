@@ -1,24 +1,13 @@
 import {
-  CATEGORY_IDS,
+  type CategoryDefinition,
   type CategoryId,
   type PaymentChannel,
+  type SubcategoryDefinition,
   type TransactionKind,
   type TransactionStatus,
 } from './types';
 
-export interface SubcategoryDefinition {
-  id: string;
-  label: string;
-}
-
-export interface CategoryDefinition {
-  id: CategoryId;
-  label: string;
-  shortLabel: string;
-  color: string;
-  icon: string;
-  subcategories: readonly SubcategoryDefinition[];
-}
+export type { CategoryDefinition, SubcategoryDefinition } from './types';
 
 export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
   {
@@ -154,34 +143,177 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     icon: 'more-horiz',
     subcategories: [],
   },
-] as const;
+];
 
-const CATEGORY_MAP = new Map(
-  CATEGORY_DEFINITIONS.map((category) => [category.id, category]),
-);
+const MAX_CATEGORY_ID_LENGTH = 100;
+const MAX_CATEGORY_LABEL_LENGTH = 100;
+const MAX_CATEGORIES = 100;
+const MAX_SUBCATEGORIES_PER_CATEGORY = 100;
+const DEFAULT_CATEGORY_COLOR = '#64748B';
+const DEFAULT_CATEGORY_ICON = 'more-horiz';
 
-export function isCategoryId(value: unknown): value is CategoryId {
+function normalizedText(
+  value: unknown,
+  maximumLength: number,
+): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized && normalized.length <= maximumLength
+    ? normalized
+    : null;
+}
+
+export function cloneCategoryDefinitions(
+  categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
+): CategoryDefinition[] {
+  return categories.map((category) => ({
+    ...category,
+    subcategories: category.subcategories.map((subcategory) => ({
+      ...subcategory,
+    })),
+  }));
+}
+
+/**
+ * Sanitizes a persisted taxonomy while keeping IDs stable. The first valid
+ * occurrence of a duplicate category or subcategory ID wins.
+ */
+export function normalizeCategoryDefinitions(
+  value: unknown,
+  fallback: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
+): CategoryDefinition[] {
+  if (!Array.isArray(value)) {
+    return cloneCategoryDefinitions(fallback);
+  }
+
+  const categories: CategoryDefinition[] = [];
+  const categoryIds = new Set<string>();
+  const subcategoryIds = new Set<string>();
+
+  for (const candidate of value.slice(0, MAX_CATEGORIES)) {
+    if (
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate)
+    ) {
+      continue;
+    }
+
+    const record = candidate as Record<string, unknown>;
+    const id = normalizedText(record.id, MAX_CATEGORY_ID_LENGTH);
+    const label = normalizedText(
+      record.label,
+      MAX_CATEGORY_LABEL_LENGTH,
+    );
+    if (!id || !label || categoryIds.has(id)) {
+      continue;
+    }
+
+    const rawSubcategories = Array.isArray(record.subcategories)
+      ? record.subcategories.slice(0, MAX_SUBCATEGORIES_PER_CATEGORY)
+      : [];
+    const subcategories: SubcategoryDefinition[] = [];
+    for (const candidateSubcategory of rawSubcategories) {
+      if (
+        !candidateSubcategory ||
+        typeof candidateSubcategory !== 'object' ||
+        Array.isArray(candidateSubcategory)
+      ) {
+        continue;
+      }
+
+      const subcategoryRecord = candidateSubcategory as Record<
+        string,
+        unknown
+      >;
+      const subcategoryId = normalizedText(
+        subcategoryRecord.id,
+        MAX_CATEGORY_ID_LENGTH,
+      );
+      const subcategoryLabel = normalizedText(
+        subcategoryRecord.label,
+        MAX_CATEGORY_LABEL_LENGTH,
+      );
+      if (
+        !subcategoryId ||
+        !subcategoryLabel ||
+        subcategoryIds.has(subcategoryId)
+      ) {
+        continue;
+      }
+
+      subcategoryIds.add(subcategoryId);
+      subcategories.push({
+        id: subcategoryId,
+        label: subcategoryLabel,
+      });
+    }
+
+    categoryIds.add(id);
+    categories.push({
+      id,
+      label,
+      shortLabel:
+        normalizedText(record.shortLabel, MAX_CATEGORY_LABEL_LENGTH) ??
+        label,
+      color:
+        typeof record.color === 'string' &&
+        /^#[0-9a-f]{6}$/i.test(record.color.trim())
+          ? record.color.trim().toUpperCase()
+          : DEFAULT_CATEGORY_COLOR,
+      icon:
+        normalizedText(record.icon, MAX_CATEGORY_ID_LENGTH) ??
+        DEFAULT_CATEGORY_ICON,
+      subcategories,
+    });
+  }
+
+  return categories.length > 0
+    ? categories
+    : cloneCategoryDefinitions(fallback);
+}
+
+export function isCategoryId(
+  value: unknown,
+  categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
+): value is CategoryId {
   return (
     typeof value === 'string' &&
-    (CATEGORY_IDS as readonly string[]).includes(value)
+    categories.some((category) => category.id === value)
   );
 }
 
 export function getCategoryDefinition(
   categoryId: CategoryId,
+  categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
 ): CategoryDefinition {
-  return CATEGORY_MAP.get(categoryId) ?? CATEGORY_MAP.get('other')!;
+  return (
+    categories.find((category) => category.id === categoryId) ??
+    categories.find((category) => category.id === 'other') ??
+    CATEGORY_DEFINITIONS.find((category) => category.id === 'other')!
+  );
 }
 
 export function isValidSubcategory(
   categoryId: CategoryId,
   subcategoryId: string | undefined,
+  categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
 ): boolean {
+  const category = categories.find(
+    (definition) => definition.id === categoryId,
+  );
+  if (!category) {
+    return false;
+  }
+
   if (!subcategoryId) {
     return true;
   }
 
-  return getCategoryDefinition(categoryId).subcategories.some(
+  return category.subcategories.some(
     (subcategory) => subcategory.id === subcategoryId,
   );
 }

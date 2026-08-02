@@ -20,7 +20,6 @@ import { PageHeader } from '../components/PageHeader';
 import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
 import {
-  CATEGORY_DEFINITIONS,
   getCategoryDefinition,
   PAYMENT_CHANNEL_LABELS,
 } from '../domain/categories';
@@ -34,6 +33,7 @@ import { createDomainId } from '../domain/normalize';
 import { getMonthlyEquivalentMinor } from '../domain/recurring';
 import {
   AppSettings,
+  CategoryDefinition,
   CategoryId,
   PAYMENT_CHANNELS,
   PaymentChannel,
@@ -72,11 +72,19 @@ type FormState = {
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-const categoryOptions: Array<ChoiceOption<CategoryId>> =
-  CATEGORY_DEFINITIONS.map((category) => ({
-    value: category.id,
-    label: category.shortLabel,
-  }));
+const categoryIconNames: Readonly<Record<string, IoniconName>> = {
+  food: 'restaurant-outline',
+  digital: 'hardware-chip-outline',
+  transport: 'train-outline',
+  daily: 'bag-handle-outline',
+  housing: 'home-outline',
+  health: 'medkit-outline',
+  learning: 'book-outline',
+  leisure: 'game-controller-outline',
+  social: 'people-outline',
+  travel: 'airplane-outline',
+  other: 'ellipsis-horizontal-outline',
+};
 
 const cadenceOptions: Array<ChoiceOption<RecurrenceCadence>> = [
   { value: 'weekly', label: '周' },
@@ -174,12 +182,15 @@ function scheduleLabel(
   return `每 ${interval} ${cadenceLabels[cadence]}`;
 }
 
-function subcategoryLabel(expense: RecurringExpense): string | undefined {
+function subcategoryLabel(
+  expense: RecurringExpense,
+  categories: readonly CategoryDefinition[],
+): string | undefined {
   if (!expense.subcategoryId) {
     return undefined;
   }
 
-  return getCategoryDefinition(expense.categoryId).subcategories.find(
+  return getCategoryDefinition(expense.categoryId, categories).subcategories.find(
     (subcategory) => subcategory.id === expense.subcategoryId,
   )?.label;
 }
@@ -256,7 +267,18 @@ export function RecurringExpensesScreen({
   const editingExpense = editingId
     ? dataset.recurringExpenses.find((expense) => expense.id === editingId)
     : undefined;
-  const selectedCategory = getCategoryDefinition(form.categoryId);
+  const categoryOptions = useMemo<Array<ChoiceOption<CategoryId>>>(
+    () =>
+      dataset.settings.categories.map((category) => ({
+        value: category.id,
+        label: category.shortLabel,
+      })),
+    [dataset.settings.categories],
+  );
+  const selectedCategory = getCategoryDefinition(
+    form.categoryId,
+    dataset.settings.categories,
+  );
   const subcategoryOptions = useMemo(
     () => [
       { value: '', label: '未细分' },
@@ -804,8 +826,14 @@ export function RecurringExpensesScreen({
         ) : (
           <View style={styles.expenseList}>
             {expenses.map((expense) => {
-              const category = getCategoryDefinition(expense.categoryId);
-              const childLabel = subcategoryLabel(expense);
+              const category = getCategoryDefinition(
+                expense.categoryId,
+                dataset.settings.categories,
+              );
+              const childLabel = subcategoryLabel(
+                expense,
+                dataset.settings.categories,
+              );
               const busy = togglingId !== null || deletingId !== null;
               return (
                 <View
@@ -827,7 +855,10 @@ export function RecurringExpensesScreen({
                       ]}
                     >
                       <Ionicons
-                        name={category.icon as IoniconName}
+                        name={
+                          categoryIconNames[category.id] ??
+                          'pricetag-outline'
+                        }
                         size={20}
                         color={category.color}
                       />

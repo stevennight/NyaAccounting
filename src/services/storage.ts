@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { isLocalTime } from '../domain/date';
+import { normalizeAppSettings } from '../domain/settings';
 import {
-  AppSettings,
   DomainDataset,
   RecurringExpense,
   Transaction,
@@ -44,7 +44,7 @@ function looksLikeRecurringExpense(value: unknown): value is RecurringExpense {
   );
 }
 
-function looksLikeSettings(value: unknown): value is AppSettings {
+function looksLikeSettings(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
   }
@@ -79,7 +79,7 @@ export function parseDatasetJson(raw: string): DomainDataset {
   }
 
   return {
-    settings: parsed.settings,
+    settings: normalizeAppSettings(parsed.settings),
     transactions: parsed.transactions,
     recurringExpenses: parsed.recurringExpenses,
   };
@@ -101,4 +101,3 @@ export async function deleteDataset(): Promise<void> {
 export function serializeDataset(dataset: DomainDataset): string {
   return JSON.stringify(dataset, null, 2);
 }
-

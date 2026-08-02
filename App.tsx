@@ -18,6 +18,7 @@ import {
 } from './src/components/BottomNav';
 import { Transaction } from './src/domain/types';
 import { CaptureScreen } from './src/screens/CaptureScreen';
+import { CategorySettingsScreen } from './src/screens/CategorySettingsScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { RecordsScreen } from './src/screens/RecordsScreen';
 import { RecurringExpensesScreen } from './src/screens/RecurringExpensesScreen';
@@ -43,6 +44,7 @@ function AppContent() {
   type AppRoute =
     | { type: 'tab'; tab: AppTab }
     | { type: 'capture' }
+    | { type: 'category-settings' }
     | { type: 'transaction'; transactionId: string }
     | { type: 'recurring-expenses'; startCreating: boolean };
   const [routes, setRoutes] = useState<AppRoute[]>([
@@ -174,11 +176,14 @@ function AppContent() {
         startCreating={currentRoute.startCreating}
       />
     );
+  } else if (currentRoute.type === 'category-settings') {
+    content = <CategorySettingsScreen theme={theme} onBack={goBack} />;
   } else if (currentRoute.type === 'transaction' && editingTransaction) {
     content = (
       <TransactionEditScreen
         theme={theme}
         transaction={editingTransaction}
+        categories={dataset.settings.categories}
         recurringExpenses={dataset.recurringExpenses}
         onSave={saveTransaction}
         onDelete={deleteTransaction}
@@ -222,6 +227,12 @@ function AppContent() {
         content = (
           <SettingsScreen
             theme={theme}
+            onOpenCategories={() =>
+              setRoutes((current) => [
+                ...current,
+                { type: 'category-settings' },
+              ])
+            }
             onOpenRecurringExpenses={() =>
               setRoutes((current) => [
                 ...current,

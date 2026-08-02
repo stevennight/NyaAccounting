@@ -10,12 +10,16 @@ import {
 } from '../domain/categories';
 import { formatMoneyMinor } from '../domain/money';
 import { getTransactionLocalTime } from '../domain/transactions';
-import { CategoryId, Transaction } from '../domain/types';
+import {
+  CategoryDefinition,
+  CategoryId,
+  Transaction,
+} from '../domain/types';
 import { AppTheme, radii, spacing, typography } from '../theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-const categoryIcons: Record<CategoryId, IconName> = {
+const categoryIcons: Partial<Record<CategoryId, IconName>> = {
   food: 'restaurant-outline',
   digital: 'hardware-chip-outline',
   transport: 'train-outline',
@@ -31,12 +35,18 @@ const categoryIcons: Record<CategoryId, IconName> = {
 
 type TransactionRowProps = {
   transaction: Transaction;
+  categories?: readonly CategoryDefinition[];
   theme: AppTheme;
   onPress?: () => void;
 };
 
-export function TransactionRow({ transaction, theme, onPress }: TransactionRowProps) {
-  const category = getCategoryDefinition(transaction.categoryId);
+export function TransactionRow({
+  transaction,
+  categories,
+  theme,
+  onPress,
+}: TransactionRowProps) {
+  const category = getCategoryDefinition(transaction.categoryId, categories);
   const isConfirmed = transaction.status === 'confirmed';
   const isRefund = transaction.kind === 'refund';
   const counted =
@@ -53,9 +63,12 @@ export function TransactionRow({ transaction, theme, onPress }: TransactionRowPr
       ? '+'
       : '-'
     : '';
-  const merchant = transaction.merchant || TRANSACTION_KIND_LABELS[transaction.kind];
+  const merchant =
+    transaction.merchant || TRANSACTION_KIND_LABELS[transaction.kind];
+  const title = transaction.description?.trim() || merchant;
   const transactionTime = getTransactionLocalTime(transaction);
   const meta = [
+    transaction.description?.trim() ? merchant : null,
     category?.label ?? '其他',
     PAYMENT_CHANNEL_LABELS[transaction.paymentChannel],
     `${transaction.date.slice(5).replace('-', '/')}${
@@ -77,14 +90,14 @@ export function TransactionRow({ transaction, theme, onPress }: TransactionRowPr
     >
       <View style={[styles.iconBox, { backgroundColor: theme.colors.surfaceMuted }]}>
         <Ionicons
-          name={categoryIcons[transaction.categoryId]}
+          name={categoryIcons[transaction.categoryId] ?? 'pricetag-outline'}
           size={20}
           color={theme.colors.textMuted}
         />
       </View>
       <View style={styles.copy}>
         <Text style={[styles.merchant, { color: theme.colors.text }]} numberOfLines={1}>
-          {merchant}
+          {title}
         </Text>
         <Text style={[styles.meta, { color: theme.colors.textMuted }]} numberOfLines={1}>
           {meta}

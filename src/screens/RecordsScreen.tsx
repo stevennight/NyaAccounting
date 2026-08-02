@@ -203,6 +203,7 @@ export function RecordsScreen({
                   <TransactionRow
                     key={transaction.id}
                     transaction={transaction}
+                    categories={dataset.settings.categories}
                     theme={theme}
                     onPress={() => onOpenTransaction(transaction)}
                   />

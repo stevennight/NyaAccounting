@@ -3,8 +3,8 @@ import type { DocumentPickerAsset } from 'expo-document-picker';
 import { Platform } from 'react-native';
 
 import { isLocalDate, isLocalTime } from '../domain/date';
+import { normalizeAppSettings } from '../domain/settings';
 import {
-  CATEGORY_IDS,
   FUNDING_INSTRUMENT_TYPES,
   PAYMENT_CHANNELS,
   RECURRENCE_CADENCES,
@@ -14,6 +14,7 @@ import {
 } from '../domain/types';
 import type {
   AppSettings,
+  CategoryDefinition,
   DomainDataset,
   FundingInstrument,
   RecurringExpense,
@@ -27,7 +28,6 @@ export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
 const MAX_TRANSACTIONS = 100_000;
 const MAX_RECURRING_EXPENSES = 10_000;
 
-const categoryIds = new Set<string>(CATEGORY_IDS);
 const fundingInstrumentTypes = new Set<string>(FUNDING_INSTRUMENT_TYPES);
 const paymentChannels = new Set<string>(PAYMENT_CHANNELS);
 const recurrenceCadences = new Set<string>(RECURRENCE_CADENCES);
@@ -189,7 +189,12 @@ function validateStringArray(
   });
 }
 
-function validateTransaction(value: unknown, index: number): Transaction {
+function validateTransaction(
+  value: unknown,
+  index: number,
+  categoryIds: ReadonlySet<string>,
+  categories: readonly CategoryDefinition[],
+): Transaction {
   const path = `dataset.transactions[${index}]`;
   const transaction = expectRecord(value, path);
 
@@ -209,6 +214,17 @@ function validateTransaction(value: unknown, index: number): Transaction {
   expectOptionalString(transaction.description, `${path}.description`);
   expectEnum(transaction.categoryId, categoryIds, `${path}.categoryId`);
   expectOptionalString(transaction.subcategoryId, `${path}.subcategoryId`, 200);
+  if (
+    typeof transaction.categoryId === 'string' &&
+    typeof transaction.subcategoryId === 'string' &&
+    !categories
+      .find((category) => category.id === transaction.categoryId)
+      ?.subcategories.some(
+        (subcategory) => subcategory.id === transaction.subcategoryId,
+      )
+  ) {
+    validationError(`${path}.subcategoryId`, '不属于当前分类。');
+  }
   expectEnum(transaction.paymentChannel, paymentChannels, `${path}.paymentChannel`);
   if (transaction.fundingInstrument !== undefined) {
     validateFundingInstrument(
@@ -233,6 +249,8 @@ function validateTransaction(value: unknown, index: number): Transaction {
 function validateRecurringExpense(
   value: unknown,
   index: number,
+  categoryIds: ReadonlySet<string>,
+  categories: readonly CategoryDefinition[],
 ): RecurringExpense {
   const path = `dataset.recurringExpenses[${index}]`;
   const expense = expectRecord(value, path);
@@ -247,6 +265,17 @@ function validateRecurringExpense(
   expectString(expense.currency, `${path}.currency`, { maximumLength: 16 });
   expectEnum(expense.categoryId, categoryIds, `${path}.categoryId`);
   expectOptionalString(expense.subcategoryId, `${path}.subcategoryId`, 200);
+  if (
+    typeof expense.categoryId === 'string' &&
+    typeof expense.subcategoryId === 'string' &&
+    !categories
+      .find((category) => category.id === expense.categoryId)
+      ?.subcategories.some(
+        (subcategory) => subcategory.id === expense.subcategoryId,
+      )
+  ) {
+    validationError(`${path}.subcategoryId`, '不属于当前分类。');
+  }
   expectEnum(expense.cadence, recurrenceCadences, `${path}.cadence`);
   expectSafeInteger(expense.interval, `${path}.interval`, {
     minimum: 1,
@@ -287,6 +316,73 @@ function validateSettings(value: unknown): AppSettings {
   expectSafeInteger(settings.monthlyBudgetMinor, `${path}.monthlyBudgetMinor`, {
     minimum: 0,
   });
+
+  if (settings.categories !== undefined) {
+    if (!Array.isArray(settings.categories) || settings.categories.length === 0) {
+      validationError(`${path}.categories`, '应为非空数组。');
+    }
+    if (settings.categories.length > 100) {
+      validationError(`${path}.categories`, '分类过多，最多允许 100 个。');
+    }
+    const seenCategoryIds = new Set<string>();
+    const seenSubcategoryIds = new Set<string>();
+    settings.categories.forEach((value, categoryIndex) => {
+      const categoryPath = `${path}.categories[${categoryIndex}]`;
+      const category = expectRecord(value, categoryPath);
+      const id = expectString(category.id, `${categoryPath}.id`, {
+        maximumLength: 100,
+      });
+      if (seenCategoryIds.has(id)) {
+        validationError(`${categoryPath}.id`, '分类 ID 重复。');
+      }
+      seenCategoryIds.add(id);
+      expectString(category.label, `${categoryPath}.label`, {
+        maximumLength: 100,
+      });
+      expectString(category.shortLabel, `${categoryPath}.shortLabel`, {
+        maximumLength: 100,
+      });
+      const color = expectString(category.color, `${categoryPath}.color`, {
+        maximumLength: 7,
+      });
+      if (!/^#[0-9a-f]{6}$/i.test(color)) {
+        validationError(`${categoryPath}.color`, '应为 #RRGGBB 颜色。');
+      }
+      expectString(category.icon, `${categoryPath}.icon`, {
+        maximumLength: 100,
+      });
+      if (!Array.isArray(category.subcategories)) {
+        validationError(`${categoryPath}.subcategories`, '应为数组。');
+      }
+      if (category.subcategories.length > 100) {
+        validationError(
+          `${categoryPath}.subcategories`,
+          '子分类过多，最多允许 100 个。',
+        );
+      }
+      category.subcategories.forEach((value, subcategoryIndex) => {
+        const subcategoryPath = `${categoryPath}.subcategories[${subcategoryIndex}]`;
+        const subcategory = expectRecord(value, subcategoryPath);
+        const subcategoryId = expectString(
+          subcategory.id,
+          `${subcategoryPath}.id`,
+          { maximumLength: 100 },
+        );
+        if (seenSubcategoryIds.has(subcategoryId)) {
+          validationError(`${subcategoryPath}.id`, '子分类 ID 重复。');
+        }
+        seenSubcategoryIds.add(subcategoryId);
+        expectString(subcategory.label, `${subcategoryPath}.label`, {
+          maximumLength: 100,
+        });
+      });
+    });
+  }
+
+  const normalizedSettings = normalizeAppSettings(settings);
+  const categoryIds = new Set(
+    normalizedSettings.categories.map((category) => category.id),
+  );
 
   const categoryBudgets = expectRecord(
     settings.categoryBudgetsMinor,
@@ -373,7 +469,7 @@ function validateSettings(value: unknown): AppSettings {
   });
   expectBoolean(ai.sendImages, `${path}.ai.sendImages`);
 
-  return settings as unknown as AppSettings;
+  return normalizedSettings;
 }
 
 function assertUniqueIds(
@@ -392,6 +488,9 @@ function assertUniqueIds(
 export function validateDomainDataset(value: unknown): DomainDataset {
   const dataset = expectRecord(value, 'dataset');
   const settings = validateSettings(dataset.settings);
+  const categoryIds = new Set(
+    settings.categories.map((category) => category.id),
+  );
 
   if (!Array.isArray(dataset.transactions)) {
     validationError('dataset.transactions', '应为数组。');
@@ -402,7 +501,14 @@ export function validateDomainDataset(value: unknown): DomainDataset {
       `账目过多，最多允许 ${MAX_TRANSACTIONS} 笔。`,
     );
   }
-  const transactions = dataset.transactions.map(validateTransaction);
+  const transactions = dataset.transactions.map((transaction, index) =>
+    validateTransaction(
+      transaction,
+      index,
+      categoryIds,
+      settings.categories,
+    ),
+  );
   assertUniqueIds(transactions, 'dataset.transactions');
 
   if (!Array.isArray(dataset.recurringExpenses)) {
@@ -415,7 +521,13 @@ export function validateDomainDataset(value: unknown): DomainDataset {
     );
   }
   const recurringExpenses = dataset.recurringExpenses.map(
-    validateRecurringExpense,
+    (expense, index) =>
+      validateRecurringExpense(
+        expense,
+        index,
+        categoryIds,
+        settings.categories,
+      ),
   );
   assertUniqueIds(recurringExpenses, 'dataset.recurringExpenses');
 

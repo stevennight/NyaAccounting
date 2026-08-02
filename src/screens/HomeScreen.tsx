@@ -6,7 +6,6 @@ import {
   calculateBudgetFromSettings,
   calculateCategoryAnalytics,
 } from '../domain/analytics';
-import { getCategoryDefinition } from '../domain/categories';
 import { formatLocalDate, formatMonthKey } from '../domain/date';
 import { formatMoneyMinor } from '../domain/money';
 import { compareTransactionDateTime } from '../domain/transactions';
@@ -75,6 +74,7 @@ export function HomeScreen({
         transactions: dataset.transactions,
         month,
         currency: dataset.settings.currency,
+        categories: dataset.settings.categories,
         categoryBudgetsMinor: dataset.settings.categoryBudgetsMinor,
       })
         .filter((item) => item.chartAmountMinor > 0)
@@ -87,6 +87,7 @@ export function HomeScreen({
         })),
     [
       dataset.settings.categoryBudgetsMinor,
+      dataset.settings.categories,
       dataset.settings.currency,
       dataset.transactions,
       month,
@@ -102,6 +103,9 @@ export function HomeScreen({
   const topCategory = categoryTotals[0];
   const digitalMinor =
     categoryTotals.find((item) => item.id === 'digital')?.value ?? 0;
+  const digitalLabel =
+    dataset.settings.categories.find((category) => category.id === 'digital')
+      ?.label ?? '数字与订阅';
   const paceTone =
     budgetSummary.health === 'over' || budgetSummary.health === 'danger'
       ? 'danger'
@@ -176,7 +180,7 @@ export function HomeScreen({
             </View>
             <View style={styles.metricRight}>
               <Text style={[styles.metricLabel, { color: theme.colors.textMuted }]}>
-                数字与订阅
+                {digitalLabel}
               </Text>
               <Text style={[styles.metricValue, { color: theme.colors.text }]}>
                 {formatMoneyMinor(digitalMinor, dataset.settings.currency)}
@@ -216,7 +220,7 @@ export function HomeScreen({
         <View style={styles.section}>
           <SectionHeader
             title="花到哪里"
-            subtitle={topCategory ? `最多是${getCategoryDefinition(topCategory.id)?.label}` : undefined}
+            subtitle={topCategory ? `最多是${topCategory.label}` : undefined}
             theme={theme}
             action={
               <AppButton
@@ -271,6 +275,7 @@ export function HomeScreen({
               <TransactionRow
                 key={transaction.id}
                 transaction={transaction}
+                categories={dataset.settings.categories}
                 theme={theme}
                 onPress={() => onOpenTransaction(transaction)}
               />

@@ -5,6 +5,7 @@ import {
   TRANSACTION_KINDS,
   TRANSACTION_SOURCES,
   TRANSACTION_STATUSES,
+  type CategoryDefinition,
   type CategoryId,
   type DomainIssue,
   type DraftFieldEvidence,
@@ -20,7 +21,11 @@ import {
   type TransactionStatus,
   type TransactionDraftReview,
 } from './types';
-import { isCategoryId, isValidSubcategory } from './categories';
+import {
+  CATEGORY_DEFINITIONS,
+  isCategoryId,
+  isValidSubcategory,
+} from './categories';
 import {
   isLocalTime,
   normalizeLocalDate,
@@ -207,6 +212,7 @@ export interface NormalizeDraftOptions {
   defaultCurrency?: string;
   defaultDate?: string;
   defaultCategoryId?: CategoryId;
+  categories?: readonly CategoryDefinition[];
   defaultStatus?: TransactionStatus;
   defaultPaymentChannel?: PaymentChannel;
   source?: TransactionSource;
@@ -217,6 +223,7 @@ export interface NormalizeDraftOptions {
 export interface ConfirmDraftOptions {
   now?: Date;
   transactionId?: string;
+  categories?: readonly CategoryDefinition[];
 }
 
 export type ConfirmDraftResult =
@@ -281,15 +288,30 @@ export function normalizeTransactionStatus(
   );
 }
 
-export function normalizeCategoryId(value: unknown): CategoryId | null {
-  if (isCategoryId(value)) {
+export function normalizeCategoryId(
+  value: unknown,
+  categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
+): CategoryId | null {
+  if (isCategoryId(value, categories)) {
     return value;
   }
   if (typeof value !== 'string') {
     return null;
   }
 
-  return CATEGORY_ALIASES[normalizedAliasKey(value)] ?? null;
+  const normalized = normalizedAliasKey(value);
+  const aliased = CATEGORY_ALIASES[normalized];
+  if (aliased && isCategoryId(aliased, categories)) {
+    return aliased;
+  }
+
+  return (
+    categories.find(
+      (category) =>
+        normalizedAliasKey(category.label) === normalized ||
+        normalizedAliasKey(category.shortLabel) === normalized,
+    )?.id ?? null
+  );
 }
 
 export function normalizePaymentChannel(
@@ -506,6 +528,7 @@ function issue(
 
 export function validateTransactionDraft(
   draft: TransactionDraft,
+  categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
 ): DomainIssue[] {
   const issues: DomainIssue[] = [];
 
@@ -541,16 +564,16 @@ export function validateTransactionDraft(
   }
   if (!draft.merchant.trim()) {
     issues.push(
-      issue('missing_merchant', 'error', '请填写消费内容或商户', 'merchant'),
+      issue('missing_merchant', 'error', '请填写商户', 'merchant'),
     );
   }
-  if (!draft.categoryId) {
+  if (!draft.categoryId || !isCategoryId(draft.categoryId, categories)) {
     issues.push(
       issue('invalid_category', 'error', '请选择消费分类', 'categoryId'),
     );
   } else if (
     draft.subcategoryId &&
-    !isValidSubcategory(draft.categoryId, draft.subcategoryId)
+    !isValidSubcategory(draft.categoryId, draft.subcategoryId, categories)
   ) {
     issues.push(
       issue(
@@ -583,6 +606,7 @@ export function normalizeTransactionDraft(
   input: TransactionDraftInput,
   options: NormalizeDraftOptions = {},
 ): TransactionDraft {
+  const categories = options.categories ?? CATEGORY_DEFINITIONS;
   const now = options.now ?? new Date();
   const timestamp = safeTimestamp(now);
   const defaultCurrency =
@@ -606,18 +630,30 @@ export function normalizeTransactionDraft(
     parsedAmount === null ? null : Math.abs(parsedAmount);
 
   const rawCategory = input.categoryId ?? input.category;
+  const normalizedRawCategory = normalizeCategoryId(
+    rawCategory,
+    categories,
+  );
+  const normalizedDefaultCategory = normalizeCategoryId(
+    options.defaultCategoryId,
+    categories,
+  );
   const categoryId =
-    normalizeCategoryId(rawCategory) ?? options.defaultCategoryId ?? 'other';
+    normalizedRawCategory ??
+    normalizedDefaultCategory ??
+    categories.find((category) => category.id === 'other')?.id ??
+    categories[0]?.id ??
+    'other';
   const rawSubcategory = stringValue(
     input.subcategoryId ?? input.subcategory,
   );
   const subcategoryId =
-    rawSubcategory && isValidSubcategory(categoryId, rawSubcategory)
+    rawSubcategory &&
+    isValidSubcategory(categoryId, rawSubcategory, categories)
       ? rawSubcategory
       : undefined;
 
-  const merchant =
-    stringValue(input.merchant) ?? stringValue(input.description) ?? '';
+  const merchant = stringValue(input.merchant) ?? '';
   const description = stringValue(input.description);
   const paymentChannel =
     normalizePaymentChannel(input.paymentChannel ?? input.channel) ??
@@ -667,7 +703,7 @@ export function normalizeTransactionDraft(
     date,
     time,
     merchant,
-    ...(description && description !== merchant ? { description } : {}),
+    ...(description ? { description } : {}),
     categoryId,
     ...(subcategoryId ? { subcategoryId } : {}),
     paymentChannel,
@@ -689,7 +725,7 @@ export function normalizeTransactionDraft(
     updatedAt: timestamp,
   };
 
-  draft.issues = validateTransactionDraft(draft);
+  draft.issues = validateTransactionDraft(draft, categories);
 
   if (rawKind !== undefined && kind === null) {
     draft.issues.unshift(
@@ -727,12 +763,12 @@ export function normalizeTransactionDraft(
       issue('invalid_time', 'error', '无法识别交易时间', 'time'),
     );
   }
-  if (rawCategory !== undefined && !normalizeCategoryId(rawCategory)) {
+  if (rawCategory !== undefined && !normalizedRawCategory) {
     draft.issues.push(
       issue(
         'invalid_category',
         'warning',
-        '无法识别消费分类，已归入其他',
+        '无法识别消费分类，已使用默认分类',
         'categoryId',
       ),
     );
@@ -766,7 +802,7 @@ export function normalizeTransactionDraft(
       issue(
         'invalid_category',
         'warning',
-        '未识别消费分类，已归入其他',
+        '未识别消费分类，已使用默认分类',
         'categoryId',
       ),
     );
@@ -795,8 +831,9 @@ export function normalizeTransactionDraft(
 
 export function isTransactionDraftReady(
   draft: TransactionDraft,
+  categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
 ): boolean {
-  return !validateTransactionDraft(draft).some(
+  return !validateTransactionDraft(draft, categories).some(
     (item) => item.severity === 'error',
   );
 }
@@ -805,7 +842,8 @@ export function confirmTransactionDraft(
   draft: TransactionDraft,
   options: ConfirmDraftOptions = {},
 ): ConfirmDraftResult {
-  const issues = validateTransactionDraft(draft);
+  const categories = options.categories ?? CATEGORY_DEFINITIONS;
+  const issues = validateTransactionDraft(draft, categories);
   const blockingIssues = issues.filter((item) => item.severity === 'error');
 
   if (
@@ -836,7 +874,11 @@ export function confirmTransactionDraft(
       : {}),
     categoryId: draft.categoryId,
     ...(draft.subcategoryId &&
-    isValidSubcategory(draft.categoryId, draft.subcategoryId)
+    isValidSubcategory(
+      draft.categoryId,
+      draft.subcategoryId,
+      categories,
+    )
       ? { subcategoryId: draft.subcategoryId }
       : {}),
     paymentChannel: draft.paymentChannel,
@@ -884,6 +926,7 @@ export function normalizeTransaction(
   const result = confirmTransactionDraft(draft, {
     now: options.now,
     transactionId: stringValue(record.id),
+    categories: options.categories,
   });
 
   if (!result.ok) {

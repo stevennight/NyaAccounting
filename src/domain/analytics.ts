@@ -15,6 +15,7 @@ import { calculateRecurringReserveMinor } from './recurring';
 import { getSpendingImpactMinor } from './transactions';
 import type {
   AppSettings,
+  CategoryDefinition,
   CategoryId,
   CurrencyCode,
   LocalDate,
@@ -67,6 +68,7 @@ export interface CategoryAnalyticsInput {
   transactions: readonly Transaction[];
   month: MonthKey;
   currency: CurrencyCode;
+  categories?: readonly CategoryDefinition[];
   categoryBudgetsMinor?: Partial<Record<CategoryId, number>>;
 }
 
@@ -364,7 +366,8 @@ export function calculateCategoryAnalytics(
     buckets.set(transaction.categoryId, bucket);
   }
 
-  const categoryItems = CATEGORY_DEFINITIONS.flatMap((definition) => {
+  const categories = input.categories ?? CATEGORY_DEFINITIONS;
+  const categoryItems = categories.flatMap((definition) => {
     const bucket = buckets.get(definition.id);
     const budgetMinor = input.categoryBudgetsMinor?.[definition.id];
     if (!bucket && budgetMinor === undefined) {
@@ -417,10 +420,10 @@ export function calculateCategoryAnalytics(
     .sort(
       (left, right) =>
         right.chartAmountMinor - left.chartAmountMinor ||
-        CATEGORY_DEFINITIONS.findIndex(
+        categories.findIndex(
           (category) => category.id === left.categoryId,
         ) -
-          CATEGORY_DEFINITIONS.findIndex(
+          categories.findIndex(
             (category) => category.id === right.categoryId,
           ),
     );
@@ -477,12 +480,14 @@ export function calculateMerchantAnalytics(
 export function calculateMonthAnalytics(
   budgetInput: MonthlyBudgetInput,
   categoryBudgetsMinor?: Partial<Record<CategoryId, number>>,
+  categoryDefinitions?: readonly CategoryDefinition[],
 ): MonthAnalytics {
   const budget = calculateMonthlyBudget(budgetInput);
   const categories = calculateCategoryAnalytics({
     transactions: budgetInput.transactions,
     month: budgetInput.month,
     currency: budgetInput.currency,
+    categories: categoryDefinitions,
     categoryBudgetsMinor,
   });
   const merchants = calculateMerchantAnalytics(
@@ -570,6 +575,9 @@ export function getCategoryChartTotal(
   return items.reduce((total, item) => total + item.chartAmountMinor, 0);
 }
 
-export function getCategoryLabel(categoryId: CategoryId): string {
-  return getCategoryDefinition(categoryId).label;
+export function getCategoryLabel(
+  categoryId: CategoryId,
+  categories?: readonly CategoryDefinition[],
+): string {
+  return getCategoryDefinition(categoryId, categories).label;
 }

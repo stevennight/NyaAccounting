@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
 import {
-  CATEGORY_DEFINITIONS,
   PAYMENT_CHANNEL_LABELS,
   TRANSACTION_KIND_LABELS,
   TRANSACTION_STATUS_LABELS,
@@ -18,6 +17,8 @@ import {
 } from '../domain/money';
 import { getTransactionLocalTime } from '../domain/transactions';
 import {
+  CategoryDefinition,
+  CategoryId,
   FUNDING_INSTRUMENT_TYPES,
   FundingInstrumentType,
   PAYMENT_CHANNELS,
@@ -42,6 +43,7 @@ import { SectionHeader } from '../components/SectionHeader';
 type TransactionEditScreenProps = {
   theme: AppTheme;
   transaction: Transaction;
+  categories: readonly CategoryDefinition[];
   recurringExpenses: readonly RecurringExpense[];
   onSave: (transaction: Transaction) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -57,11 +59,6 @@ const statusOptions: Array<ChoiceOption<TransactionStatus>> =
     value,
     label: TRANSACTION_STATUS_LABELS[value],
   }));
-
-const categoryOptions = CATEGORY_DEFINITIONS.map((category) => ({
-  value: category.id,
-  label: category.shortLabel,
-}));
 
 const channelOptions: Array<ChoiceOption<PaymentChannel>> = PAYMENT_CHANNELS.map(
   (value) => ({ value, label: PAYMENT_CHANNEL_LABELS[value] }),
@@ -89,6 +86,7 @@ const NO_SUBCATEGORY = '__none__';
 export function TransactionEditScreen({
   theme,
   transaction,
+  categories,
   recurringExpenses,
   onSave,
   onDelete,
@@ -143,9 +141,17 @@ export function TransactionEditScreen({
     ],
     [currency, recurringExpenses, transaction.recurringExpenseId],
   );
+  const categoryOptions = useMemo<Array<ChoiceOption<CategoryId>>>(
+    () =>
+      categories.map((category) => ({
+        value: category.id,
+        label: category.shortLabel,
+      })),
+    [categories],
+  );
   const subcategoryOptions = useMemo<Array<ChoiceOption<string>>>(
     () => {
-      const category = CATEGORY_DEFINITIONS.find(
+      const category = categories.find(
         (definition) => definition.id === categoryId,
       );
       return [
@@ -156,7 +162,7 @@ export function TransactionEditScreen({
         })) ?? []),
       ];
     },
-    [categoryId],
+    [categories, categoryId],
   );
 
   useEffect(() => {
@@ -211,7 +217,7 @@ export function TransactionEditScreen({
     !amountError && !currencyError && amountMinor !== null
       ? `按 ${currency} 保存：${formatMoneyMinor(amountMinor, currency)}`
       : undefined;
-  const merchantError = merchant.trim() ? undefined : '请填写消费内容或商户。';
+  const merchantError = merchant.trim() ? undefined : '请填写商户。';
   const last4Error =
     !last4.trim() || /^\d{4}$/.test(last4.trim())
       ? undefined
@@ -371,7 +377,7 @@ export function TransactionEditScreen({
       ) : null}
 
       <View style={styles.section}>
-        <SectionHeader title="核心信息" theme={theme} />
+        <SectionHeader title="金额与时间" theme={theme} />
         <View style={styles.twoColumns}>
           <View style={styles.flexField}>
             <FormField
@@ -399,21 +405,6 @@ export function TransactionEditScreen({
             />
           </View>
         </View>
-        <FormField
-          theme={theme}
-          label="消费内容 / 商户"
-          value={merchant}
-          onChangeText={setMerchant}
-          error={merchantError}
-          testID="edit-merchant"
-        />
-        <FormField
-          theme={theme}
-          label="具体内容（可选）"
-          value={description}
-          onChangeText={setDescription}
-          placeholder="例如：午餐、Cursor 月费"
-        />
         <View style={styles.twoColumns}>
           <View style={styles.flexField}>
             <FormField
@@ -444,21 +435,23 @@ export function TransactionEditScreen({
       </View>
 
       <View style={styles.section}>
-        <SectionHeader title="如何统计" theme={theme} />
-        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>交易类型</Text>
-        <ChoiceChips
+        <SectionHeader title="消费内容" theme={theme} />
+        <FormField
           theme={theme}
-          value={kind}
-          options={kindOptions}
-          onChange={setKind}
+          label="商户"
+          value={merchant}
+          onChangeText={setMerchant}
+          placeholder="例如：盒马、Apple"
+          error={merchantError}
+          testID="edit-merchant"
         />
-        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>状态</Text>
-        <ChoiceChips
+        <FormField
           theme={theme}
-          value={status}
-          options={statusOptions}
-          onChange={setStatus}
-          scrollable={false}
+          label="消费内容"
+          value={description}
+          onChangeText={setDescription}
+          placeholder="例如：午餐、云服务续费"
+          testID="edit-description"
         />
         <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>分类</Text>
         <ChoiceChips
@@ -469,6 +462,7 @@ export function TransactionEditScreen({
             setCategoryId(value);
             setSubcategoryId(NO_SUBCATEGORY);
           }}
+          testID="edit-category"
         />
         {subcategoryOptions.length > 1 ? (
           <>
@@ -484,6 +478,79 @@ export function TransactionEditScreen({
             />
           </>
         ) : null}
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader title="支付信息" theme={theme} />
+        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>支付渠道</Text>
+        <ChoiceChips
+          theme={theme}
+          value={paymentChannel}
+          options={channelOptions}
+          onChange={setPaymentChannel}
+          testID="edit-payment-channel"
+        />
+        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>资金工具</Text>
+        <ChoiceChips
+          theme={theme}
+          value={fundingType}
+          options={fundingTypeOptions}
+          onChange={setFundingType}
+          testID="edit-funding-type"
+        />
+        <View style={styles.twoColumns}>
+          <View style={styles.flexField}>
+            <FormField
+              theme={theme}
+              label="机构（可选）"
+              value={issuer}
+              onChangeText={setIssuer}
+              placeholder="例如：招商银行"
+            />
+          </View>
+          <View style={styles.flexField}>
+            <FormField
+              theme={theme}
+              label="名称（可选）"
+              value={fundingLabel}
+              onChangeText={setFundingLabel}
+              placeholder="例如：Visa"
+            />
+          </View>
+        </View>
+        <FormField
+          theme={theme}
+          label="卡号尾号（可选）"
+          value={last4}
+          onChangeText={(value) =>
+            setLast4(value.replace(/\D/g, '').slice(0, 4))
+          }
+          keyboardType="number-pad"
+          maxLength={4}
+          error={last4Error}
+          placeholder="1234"
+        />
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader title="记账规则" theme={theme} />
+        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>交易类型</Text>
+        <ChoiceChips
+          theme={theme}
+          value={kind}
+          options={kindOptions}
+          onChange={setKind}
+          testID="edit-kind"
+        />
+        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>交易状态</Text>
+        <ChoiceChips
+          theme={theme}
+          value={status}
+          options={statusOptions}
+          onChange={setStatus}
+          scrollable={false}
+          testID="edit-status"
+        />
         <Text style={[styles.help, { color: theme.colors.textMuted }]}>
           只有“已确认”的支出与退款会影响预算；转账、还款和投资不会计入消费。
         </Text>
@@ -504,63 +571,14 @@ export function TransactionEditScreen({
             </Text>
           </>
         ) : null}
-      </View>
-
-      <View style={styles.section}>
-        <SectionHeader
-          title="支付信息"
-          subtitle="只作为账目标签，不计算账户余额"
-          theme={theme}
-        />
-        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>支付渠道</Text>
-        <ChoiceChips
-          theme={theme}
-          value={paymentChannel}
-          options={channelOptions}
-          onChange={setPaymentChannel}
-        />
-        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>实际扣款工具</Text>
-        <ChoiceChips
-          theme={theme}
-          value={fundingType}
-          options={fundingTypeOptions}
-          onChange={setFundingType}
-        />
-        <View style={styles.twoColumns}>
-          <View style={styles.flexField}>
-            <FormField
-              theme={theme}
-              label="银行 / 机构（可选）"
-              value={issuer}
-              onChangeText={setIssuer}
-              placeholder="例如：招商银行"
-            />
-          </View>
-          <View style={styles.last4Field}>
-            <FormField
-              theme={theme}
-              label="尾号（可选）"
-              value={last4}
-              onChangeText={(value) => setLast4(value.replace(/\D/g, '').slice(0, 4))}
-              keyboardType="number-pad"
-              error={last4Error}
-              placeholder="4821"
-            />
-          </View>
-        </View>
         <FormField
           theme={theme}
-          label="显示名称（可选）"
-          value={fundingLabel}
-          onChangeText={setFundingLabel}
-          placeholder="例如：Visa、花呗"
-        />
-        <FormField
-          theme={theme}
-          label="备注（可选）"
+          label="备注（仅手动，可选）"
           value={note}
           onChangeText={setNote}
           multiline
+          placeholder="仅供自己补充，不由 AI 生成"
+          testID="edit-note"
         />
       </View>
 

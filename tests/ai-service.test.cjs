@@ -72,6 +72,25 @@ const baseConfig = {
   timeoutMs: 5_000,
 };
 
+const customCategories = [
+  {
+    id: 'meals',
+    label: '餐饮',
+    shortLabel: '餐饮',
+    color: '#F97316',
+    icon: 'restaurant',
+    subcategories: [{ id: 'coffee', label: '咖啡' }],
+  },
+  {
+    id: 'work_tools',
+    label: '工作工具',
+    shortLabel: '工具',
+    color: '#2563EB',
+    icon: 'laptop',
+    subcategories: [{ id: 'hosting', label: '托管服务' }],
+  },
+];
+
 function extractedTransaction(overrides = {}) {
   return {
     schemaVersion: 1,
@@ -278,6 +297,54 @@ describe('AI extraction compatibility', () => {
     assert.equal('reasoning_effort' in requestBody, false);
   });
 
+  test('uses the runtime taxonomy in the schema and extraction instructions', async () => {
+    let requestBody;
+    const fetcher = async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return response(
+        completionResponse(
+          extractedTransaction({
+            merchant: 'GitHub',
+            description: 'Codespaces 月度订阅',
+            categoryId: 'work_tools',
+            subcategoryId: 'hosting',
+          }),
+        ),
+      );
+    };
+    const service = createAiService({ ...baseConfig, fetcher });
+
+    const result = await service.extractTransaction({
+      text: '这是 Codespaces 月度订阅，不是普通购物',
+      categories: customCategories,
+    });
+
+    assert.deepEqual(
+      requestBody.response_format.json_schema.schema.properties.categoryId
+        .enum,
+      ['meals', 'work_tools', null],
+    );
+    assert.deepEqual(
+      requestBody.response_format.json_schema.schema.properties.subcategoryId
+        .enum,
+      ['coffee', 'hosting', null],
+    );
+    assert.match(requestBody.messages[0].content, /工作工具/);
+    assert.match(requestBody.messages[0].content, /托管服务/);
+    assert.match(
+      requestBody.messages[0].content,
+      /merchant is only the payee/i,
+    );
+    assert.match(
+      requestBody.messages[0].content,
+      /merge their supported details/i,
+    );
+    assert.match(requestBody.messages[0].content, /manual-only field/i);
+    assert.match(requestBody.messages[1].content, /supplemental clarification/i);
+    assert.equal(result.categoryId, 'work_tools');
+    assert.equal(result.subcategoryId, 'hosting');
+  });
+
   test('falls back from json_schema to json_object and then prompt-only JSON', async () => {
     const calls = [];
     const fetcher = async (_url, init) => {
@@ -298,7 +365,14 @@ describe('AI extraction compatibility', () => {
           400,
         );
       }
-      return response(completionResponse(extractedTransaction()));
+      return response(
+        completionResponse(
+          extractedTransaction({
+            categoryId: 'work_tools',
+            subcategoryId: 'hosting',
+          }),
+        ),
+      );
     };
     const service = createAiService({ ...baseConfig, fetcher });
 
@@ -306,6 +380,7 @@ describe('AI extraction compatibility', () => {
       text: '午餐 32 元，微信支付',
       todayLocal: '2026-07-27',
       defaultCurrency: 'CNY',
+      categories: customCategories,
     });
 
     assert.equal(calls.length, 3);
@@ -319,6 +394,12 @@ describe('AI extraction compatibility', () => {
     assert.match(
       calls[2].messages[1].content,
       /provider is not enforcing the schema/i,
+    );
+    assert.match(calls[2].messages[1].content, /工作工具/);
+    assert.match(calls[2].messages[1].content, /托管服务/);
+    assert.match(
+      calls[2].messages[1].content,
+      /Allowed categoryId values: meals, work_tools\./,
     );
     assert.equal(result.responseFormat, 'prompt_only');
     assert.equal(result.review.required, true);
@@ -364,6 +445,58 @@ describe('AI extraction compatibility', () => {
         error.code === 'invalid_output' &&
         /transaction time/i.test(error.message),
     );
+  });
+
+  test('validates a subcategory against the selected runtime category', () => {
+    const result = validateTransactionDraft(
+      extractedTransaction({
+        categoryId: 'work_tools',
+        subcategoryId: 'hosting',
+      }),
+      { text: '服务器月费', categories: customCategories },
+    );
+
+    assert.equal(result.categoryId, 'work_tools');
+    assert.equal(result.subcategoryId, 'hosting');
+    assert.throws(
+      () =>
+        validateTransactionDraft(
+          extractedTransaction({
+            categoryId: 'meals',
+            subcategoryId: 'hosting',
+          }),
+          { text: '服务器月费', categories: customCategories },
+        ),
+      (error) =>
+        error instanceof AiServiceError &&
+        error.code === 'invalid_output' &&
+        /subcategory outside the selected category/i.test(error.message),
+    );
+    assert.throws(
+      () =>
+        validateTransactionDraft(
+          extractedTransaction({ categoryId: 'food' }),
+          { text: '午餐', categories: customCategories },
+        ),
+      (error) =>
+        error instanceof AiServiceError &&
+        error.code === 'invalid_output' &&
+        /invalid category/i.test(error.message),
+    );
+  });
+
+  test('does not copy consumption content into an unknown merchant', () => {
+    const result = validateTransactionDraft(
+      extractedTransaction({
+        merchant: null,
+        description: '冰拿铁与三明治',
+      }),
+      { text: '冰拿铁与三明治' },
+    );
+
+    assert.equal(result.merchant, '');
+    assert.equal(result.description, '冰拿铁与三明治');
+    assert.ok(result.review.fields.includes('merchant'));
   });
 
   test('marks missing fallback fields for review while preserving known values', () => {

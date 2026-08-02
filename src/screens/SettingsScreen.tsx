@@ -53,6 +53,7 @@ const reasoningOptions: Array<ChoiceOption<AiReasoningEffort>> = [
 
 type SettingsScreenProps = {
   theme: AppTheme;
+  onOpenCategories: () => void;
   onOpenRecurringExpenses: () => void;
 };
 
@@ -126,6 +127,7 @@ function SwitchRow({
 
 export function SettingsScreen({
   theme,
+  onOpenCategories,
   onOpenRecurringExpenses,
 }: SettingsScreenProps) {
   const { dataset, updateSettings, replaceDataset, clearAll } = useAppStore();
@@ -339,6 +341,7 @@ export function SettingsScreen({
       );
       const result = await service.extractTransaction({
         text: '测试：今天午饭 12.30 元，微信支付。',
+        categories: settings.categories,
         todayLocal: new Date().toISOString().slice(0, 10),
         locale: settings.locale,
         defaultCurrency: settings.currency,
@@ -533,6 +536,22 @@ export function SettingsScreen({
           options={themeOptions}
           onChange={(value) => updateSettingSafely({ theme: value })}
           scrollable={false}
+        />
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="分类与子分类"
+          subtitle={`${settings.categories.length} 个分类`}
+          theme={theme}
+        />
+        <AppButton
+          label="管理分类"
+          icon="pricetags-outline"
+          onPress={onOpenCategories}
+          theme={theme}
+          variant="secondary"
+          testID="settings-categories"
         />
       </View>
 

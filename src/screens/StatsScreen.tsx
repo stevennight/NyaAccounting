@@ -66,6 +66,7 @@ export function StatsScreen({ theme }: StatsScreenProps) {
           dangerRatio: dataset.settings.budgetDangerRatio,
         },
         dataset.settings.categoryBudgetsMinor,
+        dataset.settings.categories,
       ),
     [
       dataset.recurringExpenses,
@@ -115,9 +116,7 @@ export function StatsScreen({ theme }: StatsScreenProps) {
   ).getDate();
   const averageDailyMinor = Math.floor(monthSpendingMinor / Math.max(daysInSelectedMonth, 1));
   const budgetMinor = dataset.settings.monthlyBudgetMinor;
-  const digitalMinor =
-    categoryData.find((category) => category.id === 'digital')?.value ?? 0;
-  const foodMinor = categoryData.find((category) => category.id === 'food')?.value ?? 0;
+  const focusCategories = categoryData.slice(0, 2);
 
   return (
     <Screen theme={theme} testID="stats-screen">
@@ -252,23 +251,25 @@ export function StatsScreen({ theme }: StatsScreenProps) {
         </View>
       </View>
 
-      <View style={styles.section}>
-        <SectionHeader title="重点类别" subtitle="你最关心的两类支出" theme={theme} />
-        <View style={styles.focusRows}>
-          <ProgressBar
-            theme={theme}
-            value={budgetMinor > 0 ? foodMinor / budgetMinor : 0}
-            label="吃喝"
-            detail={formatMoneyMinor(foodMinor, dataset.settings.currency)}
-          />
-          <ProgressBar
-            theme={theme}
-            value={budgetMinor > 0 ? digitalMinor / budgetMinor : 0}
-            label="数字与订阅"
-            detail={formatMoneyMinor(digitalMinor, dataset.settings.currency)}
-          />
+      {focusCategories.length > 0 ? (
+        <View style={styles.section}>
+          <SectionHeader title="重点类别" subtitle="本月消费最多的类别" theme={theme} />
+          <View style={styles.focusRows}>
+            {focusCategories.map((category) => (
+              <ProgressBar
+                key={category.id}
+                theme={theme}
+                value={budgetMinor > 0 ? category.value / budgetMinor : 0}
+                label={category.label}
+                detail={formatMoneyMinor(
+                  category.value,
+                  dataset.settings.currency,
+                )}
+              />
+            ))}
+          </View>
         </View>
-      </View>
+      ) : null}
     </Screen>
   );
 }

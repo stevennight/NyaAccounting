@@ -17,6 +17,11 @@ import {
   Transaction,
 } from '../domain/types';
 import {
+  DEFAULT_AI_SETTINGS as DOMAIN_DEFAULT_AI_SETTINGS,
+  createDefaultAppSettings,
+  normalizeAppSettings,
+} from '../domain/settings';
+import {
   deleteDataset,
   loadDataset,
   saveDataset,
@@ -24,31 +29,10 @@ import {
 import { clearAiCapabilityCache } from '../services/aiCapabilities';
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
-  enabled: false,
-  endpoint: 'https://api.openai.com/v1',
-  model: 'gpt-4.1-mini',
-  transcriptionModel: 'gpt-4o-mini-transcribe',
-  reasoningEffort: 'auto',
-  requestTimeoutMs: 45_000,
-  sendImages: true,
+  ...DOMAIN_DEFAULT_AI_SETTINGS,
 };
 
-export const DEFAULT_SETTINGS: AppSettings = {
-  schemaVersion: 1,
-  currency: 'CNY',
-  locale: 'zh-CN',
-  monthlyBudgetMinor: 0,
-  categoryBudgetsMinor: {},
-  reserveRecurringExpenses: false,
-  budgetWarningRatio: 0.8,
-  budgetDangerRatio: 0.95,
-  defaultCategoryId: 'other',
-  defaultPaymentChannel: 'unknown',
-  firstDayOfWeek: 1,
-  theme: 'system',
-  deleteRawSourcesAfterConfirmation: true,
-  ai: DEFAULT_AI_SETTINGS,
-};
+export const DEFAULT_SETTINGS: AppSettings = createDefaultAppSettings();
 
 export const EMPTY_DATASET: DomainDataset = {
   settings: DEFAULT_SETTINGS,
@@ -91,18 +75,7 @@ function createDeferred(): Deferred {
 }
 
 function mergeSettings(settings: AppSettings): AppSettings {
-  return {
-    ...DEFAULT_SETTINGS,
-    ...settings,
-    categoryBudgetsMinor: {
-      ...DEFAULT_SETTINGS.categoryBudgetsMinor,
-      ...settings.categoryBudgetsMinor,
-    },
-    ai: {
-      ...DEFAULT_AI_SETTINGS,
-      ...settings.ai,
-    },
-  };
+  return normalizeAppSettings(settings);
 }
 
 export function AppStoreProvider({ children }: PropsWithChildren) {
@@ -219,13 +192,13 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
     (patch: SettingsPatch) =>
       enqueueMutation((current) => ({
         ...current,
-        settings: {
+        settings: normalizeAppSettings({
           ...current.settings,
           ...patch,
           ai: patch.ai
             ? { ...current.settings.ai, ...patch.ai }
             : current.settings.ai,
-        },
+        }),
       })),
     [enqueueMutation],
   );
@@ -277,7 +250,7 @@ export function AppStoreProvider({ children }: PropsWithChildren) {
     () =>
       enqueueMutation(
         () => ({
-          settings: mergeSettings(DEFAULT_SETTINGS),
+          settings: createDefaultAppSettings(),
           transactions: [],
           recurringExpenses: [],
         }),

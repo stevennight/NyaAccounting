@@ -5,6 +5,24 @@ const domain = require('../.test-build/domain/index.js');
 
 const REFERENCE_DATE = '2026-07-27';
 const REFERENCE_MONTH = '2026-07';
+const CUSTOM_CATEGORIES = [
+  {
+    id: 'meals',
+    label: '餐饮',
+    shortLabel: '餐饮',
+    color: '#F97316',
+    icon: 'restaurant',
+    subcategories: [{ id: 'coffee', label: '咖啡' }],
+  },
+  {
+    id: 'work_tools',
+    label: '工作工具',
+    shortLabel: '工具',
+    color: '#2563EB',
+    icon: 'laptop',
+    subcategories: [{ id: 'hosting', label: '托管服务' }],
+  },
+];
 
 describe('settings normalization', () => {
   test('keeps old AI settings compatible and accepts a reasoning choice', () => {
@@ -21,6 +39,51 @@ describe('settings normalization', () => {
     assert.equal(legacy.ai.reasoningEffort, 'auto');
     assert.equal(configured.ai.reasoningEffort, 'none');
     assert.equal(invalid.ai.reasoningEffort, 'auto');
+  });
+
+  test('migrates old settings to independent default category copies', () => {
+    const first = domain.normalizeAppSettings({ ai: {} });
+    const second = domain.normalizeAppSettings({ ai: {} });
+
+    assert.deepEqual(
+      first.categories.map((category) => category.id),
+      domain.CATEGORY_IDS,
+    );
+    assert.notEqual(first.categories, second.categories);
+    assert.notEqual(
+      first.categories[0].subcategories,
+      second.categories[0].subcategories,
+    );
+    first.categories[0].label = '已修改';
+    assert.equal(second.categories[0].label, '吃喝');
+  });
+
+  test('keeps a valid custom taxonomy and removes duplicate definitions', () => {
+    const settings = domain.normalizeAppSettings({
+      categories: [
+        ...CUSTOM_CATEGORIES,
+        { ...CUSTOM_CATEGORIES[0], label: '重复分类' },
+      ],
+      defaultCategoryId: 'work_tools',
+      categoryBudgetsMinor: {
+        work_tools: 50_000,
+        food: 10_000,
+      },
+      ai: {},
+    });
+
+    assert.deepEqual(
+      settings.categories.map((category) => category.id),
+      ['meals', 'work_tools'],
+    );
+    assert.equal(settings.defaultCategoryId, 'work_tools');
+    assert.deepEqual(settings.categoryBudgetsMinor, {
+      work_tools: 50_000,
+    });
+    assert.equal(
+      domain.getCategoryDefinition('work_tools', settings.categories).label,
+      '工作工具',
+    );
   });
 });
 
@@ -175,6 +238,77 @@ describe('draft confirmation and duplicate detection', () => {
     assert.deepEqual(legacyDraft.tags, ['支付宝']);
   });
 
+  test('validates and confirms a custom category and subcategory', () => {
+    const draft = domain.normalizeTransactionDraft(
+      {
+        ...domain.createDemoDraft(REFERENCE_DATE),
+        categoryId: 'work_tools',
+        subcategoryId: 'hosting',
+      },
+      {
+        categories: CUSTOM_CATEGORIES,
+        defaultDate: REFERENCE_DATE,
+      },
+    );
+    const result = domain.confirmTransactionDraft(draft, {
+      categories: CUSTOM_CATEGORIES,
+    });
+
+    assert.equal(draft.categoryId, 'work_tools');
+    assert.equal(draft.subcategoryId, 'hosting');
+    assert.equal(result.ok, true);
+    assert.equal(result.transaction.categoryId, 'work_tools');
+    assert.equal(result.transaction.subcategoryId, 'hosting');
+
+    const mismatched = {
+      ...draft,
+      subcategoryId: 'coffee',
+    };
+    const mismatchedResult = domain.confirmTransactionDraft(mismatched, {
+      categories: CUSTOM_CATEGORIES,
+    });
+    assert.equal(mismatchedResult.ok, true);
+    assert.equal(mismatchedResult.transaction.subcategoryId, undefined);
+    assert.ok(
+      domain
+        .validateTransactionDraft(mismatched, CUSTOM_CATEGORIES)
+        .some((issue) => issue.field === 'subcategoryId'),
+    );
+
+    const unknownCategoryResult = domain.confirmTransactionDraft(
+      { ...draft, categoryId: 'food' },
+      { categories: CUSTOM_CATEGORIES },
+    );
+    assert.equal(unknownCategoryResult.ok, false);
+    assert.ok(
+      unknownCategoryResult.issues.some(
+        (issue) => issue.code === 'invalid_category',
+      ),
+    );
+  });
+
+  test('does not copy a description into an unknown merchant', () => {
+    const draft = domain.normalizeTransactionDraft(
+      {
+        ...domain.createDemoDraft(REFERENCE_DATE),
+        merchant: null,
+        description: '冰拿铁与三明治',
+      },
+      { defaultDate: REFERENCE_DATE },
+    );
+    const result = domain.confirmTransactionDraft(draft);
+
+    assert.equal(draft.merchant, '');
+    assert.equal(draft.description, '冰拿铁与三明治');
+    assert.equal(result.ok, false);
+    assert.ok(
+      result.issues.some(
+        (issue) =>
+          issue.code === 'missing_merchant' && issue.field === 'merchant',
+      ),
+    );
+  });
+
   test('orders transactions on the same date by transaction time', () => {
     const existing = domain.createDemoDataset(REFERENCE_DATE).transactions[0];
     const earlier = { ...existing, time: '08:00:01' };
@@ -301,6 +435,39 @@ describe('analytics', () => {
           category.shareRatio >= 0 && category.shareRatio <= 1,
       ),
     );
+  });
+
+  test('includes a runtime custom category in analytics', () => {
+    const base = dataset.transactions.find(
+      (transaction) =>
+        transaction.status === 'confirmed' &&
+        transaction.kind === 'expense' &&
+        transaction.currency === 'CNY' &&
+        transaction.date.startsWith(REFERENCE_MONTH),
+    );
+    assert.ok(base);
+
+    const categories = domain.calculateCategoryAnalytics({
+      transactions: [
+        {
+          ...base,
+          id: 'txn_custom_category',
+          categoryId: 'work_tools',
+          subcategoryId: 'hosting',
+          amountMinor: 8_800,
+        },
+      ],
+      month: REFERENCE_MONTH,
+      currency: 'CNY',
+      categories: CUSTOM_CATEGORIES,
+    });
+
+    assert.deepEqual(
+      categories.map((category) => category.categoryId),
+      ['work_tools'],
+    );
+    assert.equal(categories[0].label, '工作工具');
+    assert.equal(categories[0].netSpentMinor, 8_800);
   });
 });
 

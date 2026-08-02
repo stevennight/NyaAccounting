@@ -33,7 +33,22 @@ export const CATEGORY_IDS = [
   'other',
 ] as const;
 
-export type CategoryId = (typeof CATEGORY_IDS)[number];
+/** Stable category identifier. Built-in and user-defined IDs share this type. */
+export type CategoryId = string;
+
+export interface SubcategoryDefinition {
+  id: string;
+  label: string;
+}
+
+export interface CategoryDefinition {
+  id: CategoryId;
+  label: string;
+  shortLabel: string;
+  color: string;
+  icon: string;
+  subcategories: SubcategoryDefinition[];
+}
 
 export const PAYMENT_CHANNELS = [
   'alipay',
@@ -310,6 +325,7 @@ export interface AppSettings {
   currency: CurrencyCode;
   locale: string;
   monthlyBudgetMinor: number;
+  categories: CategoryDefinition[];
   categoryBudgetsMinor: Partial<Record<CategoryId, number>>;
   reserveRecurringExpenses: boolean;
   budgetWarningRatio: number;
