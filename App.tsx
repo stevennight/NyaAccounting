@@ -183,6 +183,8 @@ function AppContent() {
       <TransactionEditScreen
         theme={theme}
         transaction={editingTransaction}
+        transactions={dataset.transactions}
+        locale={dataset.settings.locale}
         categories={dataset.settings.categories}
         recurringExpenses={dataset.recurringExpenses}
         onSave={saveTransaction}

@@ -337,12 +337,68 @@ describe('AI extraction compatibility', () => {
     );
     assert.match(
       requestBody.messages[0].content,
-      /merge their supported details/i,
+      /synthesize one description/i,
     );
+    assert.match(requestBody.messages[0].content, /order number/i);
+    assert.match(requestBody.messages[0].content, /do not return a null description/i);
+    assert.match(requestBody.messages[0].content, /not a ready-made description value/i);
     assert.match(requestBody.messages[0].content, /manual-only field/i);
-    assert.match(requestBody.messages[1].content, /supplemental clarification/i);
+    assert.match(requestBody.messages[1].content, /semantically interpreted/i);
     assert.equal(result.categoryId, 'work_tools');
     assert.equal(result.subcategoryId, 'hosting');
+  });
+
+  test('sends screenshot and supplemental text together for semantic synthesis', async () => {
+    let requestBody;
+    const fetcher = async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return response(
+        completionResponse(
+          extractedTransaction({
+            merchant: '链动小铺',
+            description:
+              '软件激活码（订单号 LD26080278X65X，客服QQ 800000957）',
+          }),
+        ),
+      );
+    };
+    const service = createAiService({ ...baseConfig, fetcher });
+    const screenshot = {
+      uri: 'file:///prepared.jpg',
+      mimeType: 'image/jpeg',
+      base64: 'AQ==',
+      dataUrl: 'data:image/jpeg;base64,AQ==',
+      width: 1,
+      height: 1,
+      approximateBytes: 1,
+    };
+
+    const result = await service.extractTransaction({
+      screenshot,
+      text: '这个实际买的是软件激活码，截图里还有订单号',
+    });
+
+    assert.equal(result.source, 'combined');
+    assert.equal(
+      result.description,
+      '软件激活码（订单号 LD26080278X65X，客服QQ 800000957）',
+    );
+    assert.ok(Array.isArray(requestBody.messages[1].content));
+    assert.equal(requestBody.messages[1].content.length, 2);
+    assert.equal(requestBody.messages[1].content[0].type, 'text');
+    assert.match(
+      requestBody.messages[1].content[0].text,
+      /这个实际买的是软件激活码，截图里还有订单号/,
+    );
+    assert.match(
+      requestBody.messages[1].content[0].text,
+      /not mechanically copied/i,
+    );
+    assert.equal(requestBody.messages[1].content[1].type, 'image_url');
+    assert.equal(
+      requestBody.messages[1].content[1].image_url.url,
+      screenshot.dataUrl,
+    );
   });
 
   test('falls back from json_schema to json_object and then prompt-only JSON', async () => {
@@ -519,6 +575,7 @@ describe('AI extraction compatibility', () => {
         'status',
         'currency',
         'date',
+        'description',
         'categoryId',
         'paymentChannel',
         'fundingInstrument',

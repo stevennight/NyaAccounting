@@ -376,7 +376,9 @@ Rules:
 - paymentChannel is the surface that handled the payment, such as alipay or wechat_pay. fundingInstrument is the actual balance, credit line, debit card, or credit card when visibly established.
 - Card issuer, label, and last4 must be null unless directly visible or explicitly stated.
 - merchant is only the payee, store, company, or payment platform receiving the money. Do not put purchased goods, meals, subscriptions, services, order details, or the description in merchant. Return null when the merchant is unknown; never copy description into merchant.
-- description is the actual consumption content: purchased goods, meal, subscription, service, or order item. When screenshot content and supplemental user text both describe what was purchased, merge their supported details into one concise description. Prefer an explicit clarification in the supplemental user text when the two conflict, and flag a material conflict for review.
+- description is the best supported explanation of what the transaction is for. Prefer the actual purchased goods, meal, subscription, service, or order item, but also preserve useful visible order metadata such as an order number, SKU, bill reference, plan period, customer-service account, or contact number.
+- When the exact product is not visible but order metadata is, do not return a null description. Produce a concise fallback from the supported context, for example: "链动小铺订单（订单号 LD26080278X65X，客服QQ 800000957）".
+- Supplemental user text is evidence to interpret, not a ready-made description value. Extract its meaning, remove conversational filler, and rewrite it concisely. When screenshot content and supplemental user text both describe the purchase, synthesize one description that combines their non-duplicated supported details. Prefer an explicit clarification in the supplemental text when the sources conflict, and flag a material conflict for review.
 - note is a private, manual-only field outside this AI output. Never generate or return a note field.
 - categoryId must be exactly one ID from the configured taxonomy below. subcategoryId must be null or an ID belonging to the selected category. Classify from the category and subcategory labels as well as their IDs; never invent an ID.
 - Evidence excerpts must be short and must directly support the corresponding field. Mark inferred classifications as source "inferred".
@@ -670,6 +672,7 @@ function requiredReviewFields(
   if (draft.currency === null) result.push('currency');
   if (draft.date === null) result.push('date');
   if (!draft.merchant) result.push('merchant');
+  if (!draft.description) result.push('description');
   if (draft.categoryId === null) result.push('categoryId');
   if (draft.paymentChannel === 'unknown') {
     result.push('paymentChannel');
@@ -680,6 +683,7 @@ function requiredReviewFields(
     'status',
     'amountMinor',
     'date',
+    'description',
     'paymentChannel',
   ] as const) {
     const evidence = draft.evidence[field];
@@ -1385,7 +1389,7 @@ Voice transcript (source data; may be empty):
 ${transcript}
 </voice_transcript>
 
-Use the screenshot when attached. For description, combine supported consumption content from the screenshot and supplemental text, preferring an explicit supplemental clarification when they conflict. For other conflicts, preserve only directly supported values and set the relevant review flags.`;
+Read the screenshot, supplemental text, and transcript together before choosing description. The supplemental text must be semantically interpreted and rewritten, not mechanically copied. Merge its useful clarification with non-duplicated screenshot details. Preserve useful order identifiers and customer-service references from labels such as 商品说明 or order details; these are valid fallback description content when the exact item is absent. For conflicts outside description, preserve only directly supported values and set the relevant review flags.`;
 }
 
 function validateImageDataUrl(screenshot: PreparedScreenshot): void {

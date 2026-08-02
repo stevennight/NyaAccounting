@@ -96,8 +96,12 @@ export type DuplicateReason =
   | 'same_amount'
   | 'same_date'
   | 'near_date'
+  | 'same_time'
+  | 'near_time'
   | 'same_merchant'
   | 'similar_merchant'
+  | 'same_description'
+  | 'similar_description'
   | 'same_payment_channel'
   | 'same_funding_instrument';
 
@@ -113,15 +117,22 @@ export interface DuplicateDetectionOptions {
   limit?: number;
 }
 
-function normalizeMerchant(value: string): string {
+function normalizeComparableText(value: string | undefined): string {
+  if (!value) {
+    return '';
+  }
+
   return value
     .normalize('NFKC')
     .toLocaleLowerCase()
-    .replace(
-      /(?:有限责任公司|股份有限公司|有限公司|官方旗舰店|旗舰店|支付)$/u,
-      '',
-    )
     .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function normalizeMerchant(value: string): string {
+  return normalizeComparableText(value).replace(
+    /(?:有限责任公司|股份有限公司|有限公司|官方旗舰店|旗舰店|支付)$/u,
+    '',
+  );
 }
 
 function bigrams(value: string): string[] {
@@ -135,18 +146,12 @@ function bigrams(value: string): string[] {
   );
 }
 
-function merchantSimilarity(left: string, right: string): number {
-  const a = normalizeMerchant(left);
-  const b = normalizeMerchant(right);
-
+function normalizedTextSimilarity(a: string, b: string): number {
   if (!a || !b) {
     return 0;
   }
   if (a === b) {
     return 1;
-  }
-  if (a.includes(b) || b.includes(a)) {
-    return Math.min(a.length, b.length) / Math.max(a.length, b.length);
   }
 
   const leftBigrams = bigrams(a);
@@ -161,7 +166,41 @@ function merchantSimilarity(left: string, right: string): number {
     }
   }
 
-  return (2 * matches) / (leftBigrams.length + bigrams(b).length);
+  const bigramSimilarity =
+    (2 * matches) / (leftBigrams.length + bigrams(b).length);
+  const containmentSimilarity =
+    a.includes(b) || b.includes(a)
+      ? Math.min(a.length, b.length) / Math.max(a.length, b.length)
+      : 0;
+
+  return Math.max(bigramSimilarity, containmentSimilarity);
+}
+
+function merchantSimilarity(left: string, right: string): number {
+  return normalizedTextSimilarity(
+    normalizeMerchant(left),
+    normalizeMerchant(right),
+  );
+}
+
+function descriptionSimilarity(
+  left: string | undefined,
+  right: string | undefined,
+): number {
+  return normalizedTextSimilarity(
+    normalizeComparableText(left),
+    normalizeComparableText(right),
+  );
+}
+
+function localTimeToSeconds(transaction: Transaction): number | null {
+  const time = getTransactionLocalTime(transaction);
+  if (!time) {
+    return null;
+  }
+
+  const [hour, minute, second] = time.split(':').map(Number);
+  return hour * 3_600 + minute * 60 + second;
 }
 
 function fundingInstrumentMatches(
@@ -233,14 +272,37 @@ export function findDuplicateCandidates(
       continue;
     }
 
-    let score = 0.42;
+    let score = 0.38;
+    let hasCorroboratingEvidence = false;
     const reasons: DuplicateReason[] = ['same_amount'];
 
     if (distance === 0) {
-      score += 0.22;
       reasons.push('same_date');
+
+      const existingTime = localTimeToSeconds(existing);
+      const candidateTime = localTimeToSeconds(candidate);
+      if (existingTime !== null && candidateTime !== null) {
+        const timeDistance = Math.abs(existingTime - candidateTime);
+        if (timeDistance === 0) {
+          score += 0.35;
+          hasCorroboratingEvidence = true;
+          reasons.push('same_time');
+        } else if (timeDistance <= 5 * 60) {
+          score += 0.22;
+          hasCorroboratingEvidence = true;
+          reasons.push('near_time');
+        } else if (timeDistance <= 2 * 60 * 60) {
+          score += 0.12;
+          hasCorroboratingEvidence = true;
+          reasons.push('near_time');
+        } else {
+          score += 0.05;
+        }
+      } else {
+        score += 0.16;
+      }
     } else {
-      score += distance === 1 ? 0.14 : 0.08;
+      score += Math.max(0.02, 0.14 - distance * 0.04);
       reasons.push('near_date');
     }
 
@@ -249,28 +311,46 @@ export function findDuplicateCandidates(
       candidate.merchant,
     );
     if (similarity === 1) {
-      score += 0.26;
+      score += 0.22;
+      hasCorroboratingEvidence = true;
       reasons.push('same_merchant');
     } else if (similarity >= 0.5) {
-      score += 0.26 * similarity;
+      score += 0.22 * similarity;
+      hasCorroboratingEvidence = true;
       reasons.push('similar_merchant');
+    }
+
+    const contentSimilarity = descriptionSimilarity(
+      existing.description,
+      candidate.description,
+    );
+    if (contentSimilarity === 1) {
+      score += 0.24;
+      hasCorroboratingEvidence = true;
+      reasons.push('same_description');
+    } else if (contentSimilarity >= 0.5) {
+      score += 0.24 * contentSimilarity;
+      hasCorroboratingEvidence = true;
+      reasons.push('similar_description');
     }
 
     if (
       existing.paymentChannel !== 'unknown' &&
       existing.paymentChannel === candidate.paymentChannel
     ) {
-      score += 0.05;
+      score += 0.06;
+      hasCorroboratingEvidence = true;
       reasons.push('same_payment_channel');
     }
 
     if (fundingInstrumentMatches(existing, candidate)) {
-      score += 0.05;
+      score += 0.06;
+      hasCorroboratingEvidence = true;
       reasons.push('same_funding_instrument');
     }
 
     const normalizedScore = Math.min(1, Number(score.toFixed(3)));
-    if (normalizedScore >= minimumScore) {
+    if (hasCorroboratingEvidence && normalizedScore >= minimumScore) {
       matches.push({
         transaction: existing,
         score: normalizedScore,

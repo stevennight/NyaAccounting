@@ -354,6 +354,156 @@ describe('draft confirmation and duplicate detection', () => {
     assert.equal(matches[0].score, 1);
     assert.deepEqual(matches[0].reasons, ['source_fingerprint']);
   });
+
+  test('matches similar merchant and description text within five minutes', () => {
+    const base = domain.createDemoDataset(REFERENCE_DATE).transactions[0];
+    const existing = {
+      ...base,
+      id: 'txn_existing_near_time',
+      amountMinor: 3_680,
+      date: REFERENCE_DATE,
+      time: '12:30:00',
+      merchant: '上海星巴克咖啡有限公司',
+      description: '大杯冰拿铁和火腿三明治',
+      paymentChannel: 'unknown',
+      fundingInstrument: undefined,
+      sourceFingerprint: undefined,
+    };
+    const candidate = {
+      ...existing,
+      id: 'txn_candidate_near_time',
+      time: '12:34:59',
+      merchant: '星巴克咖啡旗舰店',
+      description: '大杯冰拿铁、火腿三明治套餐',
+    };
+    const matches = domain.findDuplicateCandidates(candidate, [existing]);
+
+    assert.equal(matches.length, 1);
+    assert.ok(matches[0].score >= 0.72);
+    assert.ok(matches[0].reasons.includes('near_time'));
+    assert.ok(matches[0].reasons.includes('similar_merchant'));
+    assert.ok(matches[0].reasons.includes('similar_description'));
+  });
+
+  test('matches an exact timestamp even when OCR text differs', () => {
+    const base = domain.createDemoDataset(REFERENCE_DATE).transactions[0];
+    const existing = {
+      ...base,
+      id: 'txn_existing_exact_time',
+      amountMinor: 6_600,
+      date: REFERENCE_DATE,
+      time: '09:08:07',
+      merchant: '识别前商户',
+      description: undefined,
+      paymentChannel: 'unknown',
+      fundingInstrument: undefined,
+      sourceFingerprint: undefined,
+    };
+    const candidate = {
+      ...existing,
+      id: 'txn_candidate_exact_time',
+      merchant: '完全不同的识别文字',
+    };
+    const matches = domain.findDuplicateCandidates(candidate, [existing]);
+
+    assert.equal(matches.length, 1);
+    assert.ok(matches[0].score >= 0.72);
+    assert.ok(matches[0].reasons.includes('same_time'));
+  });
+
+  test('uses a default date window of two days', () => {
+    const base = domain.createDemoDataset(REFERENCE_DATE).transactions[0];
+    const existing = {
+      ...base,
+      id: 'txn_existing_date_window',
+      date: REFERENCE_DATE,
+      merchant: 'Cursor',
+      description: 'Cursor Pro 月费',
+      sourceFingerprint: undefined,
+    };
+    const withinWindow = {
+      ...existing,
+      id: 'txn_candidate_two_days',
+      date: '2026-07-29',
+    };
+    const outsideWindow = {
+      ...existing,
+      id: 'txn_candidate_three_days',
+      date: '2026-07-30',
+    };
+
+    assert.equal(
+      domain.findDuplicateCandidates(withinWindow, [existing]).length,
+      1,
+    );
+    assert.equal(
+      domain.findDuplicateCandidates(outsideWindow, [existing]).length,
+      0,
+    );
+  });
+
+  test('excludes the transaction with the same id', () => {
+    const existing = domain.createDemoDataset(REFERENCE_DATE).transactions[0];
+
+    assert.equal(
+      domain.findDuplicateCandidates({ ...existing }, [existing]).length,
+      0,
+    );
+  });
+
+  test('does not match amount and date alone when text is unrelated', () => {
+    const base = domain.createDemoDataset(REFERENCE_DATE).transactions[0];
+    const existing = {
+      ...base,
+      id: 'txn_existing_unrelated',
+      amountMinor: 2_880,
+      date: REFERENCE_DATE,
+      time: undefined,
+      merchant: '城市地铁',
+      description: '交通卡充值',
+      paymentChannel: 'unknown',
+      fundingInstrument: undefined,
+      sourceFingerprint: undefined,
+    };
+    const candidate = {
+      ...existing,
+      id: 'txn_candidate_unrelated',
+      merchant: '社区面包店',
+      description: '生日蛋糕',
+    };
+
+    assert.equal(
+      domain.findDuplicateCandidates(candidate, [existing]).length,
+      0,
+    );
+  });
+
+  test('reduces same-day confidence when transaction times are far apart', () => {
+    const base = domain.createDemoDataset(REFERENCE_DATE).transactions[0];
+    const existing = {
+      ...base,
+      id: 'txn_existing_morning',
+      amountMinor: 2_000,
+      date: REFERENCE_DATE,
+      time: '08:00:00',
+      merchant: '便利店',
+      description: '早餐',
+      paymentChannel: 'unknown',
+      fundingInstrument: undefined,
+      sourceFingerprint: undefined,
+    };
+    const candidate = {
+      ...existing,
+      id: 'txn_candidate_evening',
+      time: '20:00:00',
+      description: '晚餐',
+    };
+
+    assert.equal(
+      domain.findDuplicateCandidates(candidate, [existing]).length,
+      0,
+    );
+  });
 });
 
 describe('analytics', () => {

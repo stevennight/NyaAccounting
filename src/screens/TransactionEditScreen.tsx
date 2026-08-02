@@ -34,15 +34,22 @@ import { AppTheme, spacing, typography } from '../theme';
 import { useHardwareBack } from '../hooks/useHardwareBack';
 import { AppButton } from '../components/AppButton';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
+import { DuplicateWarning } from '../components/DuplicateWarning';
 import { FormField } from '../components/FormField';
 import { InlineNotice } from '../components/InlineNotice';
 import { PageHeader } from '../components/PageHeader';
 import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
+import {
+  findDuplicateCandidates,
+  type DuplicateCandidate,
+} from '../domain';
 
 type TransactionEditScreenProps = {
   theme: AppTheme;
   transaction: Transaction;
+  transactions: readonly Transaction[];
+  locale: string;
   categories: readonly CategoryDefinition[];
   recurringExpenses: readonly RecurringExpense[];
   onSave: (transaction: Transaction) => Promise<void>;
@@ -86,6 +93,8 @@ const NO_SUBCATEGORY = '__none__';
 export function TransactionEditScreen({
   theme,
   transaction,
+  transactions,
+  locale,
   categories,
   recurringExpenses,
   onSave,
@@ -124,6 +133,9 @@ export function TransactionEditScreen({
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [duplicateCandidates, setDuplicateCandidates] = useState<
+    DuplicateCandidate[]
+  >([]);
 
   const recurringOptions = useMemo<Array<ChoiceOption<string>>>(
     () => [
@@ -174,6 +186,28 @@ export function TransactionEditScreen({
     }
   }, [recurringExpenseId, recurringOptions]);
 
+  useEffect(() => {
+    setDuplicateCandidates([]);
+  }, [
+    amount,
+    currency,
+    merchant,
+    description,
+    date,
+    time,
+    kind,
+    status,
+    categoryId,
+    subcategoryId,
+    paymentChannel,
+    fundingType,
+    issuer,
+    fundingLabel,
+    last4,
+    recurringExpenseId,
+    note,
+  ]);
+
   const hasChanges =
     amount !== String(minorToMajor(transaction.amountMinor, transaction.currency)) ||
     currency !== transaction.currency ||
@@ -223,7 +257,7 @@ export function TransactionEditScreen({
       ? undefined
       : '卡号尾号应为 4 位数字。';
 
-  const save = async () => {
+  const save = async (allowDuplicate = false) => {
     if (
       amountError ||
       currencyError ||
@@ -288,7 +322,18 @@ export function TransactionEditScreen({
         : {}),
     };
 
+    const duplicates = findDuplicateCandidates(
+      nextTransaction,
+      transactions,
+    );
+    if (duplicates.length > 0 && !allowDuplicate) {
+      setDuplicateCandidates(duplicates);
+      setNotice(null);
+      return;
+    }
+
     setSaving(true);
+    setDuplicateCandidates([]);
     setNotice(null);
     try {
       await onSave(nextTransaction);
@@ -582,16 +627,27 @@ export function TransactionEditScreen({
         />
       </View>
 
+      <DuplicateWarning
+        theme={theme}
+        candidates={duplicateCandidates}
+        locale={locale}
+        saving={saving}
+        onSaveAnyway={() => void save(true)}
+        onReview={() => setDuplicateCandidates([])}
+      />
+
       <View style={styles.actions}>
-        <AppButton
-          label="保存修改"
-          icon="save-outline"
-          onPress={() => void save()}
-          theme={theme}
-          loading={saving}
-          disabled={deleting}
-          testID="edit-save"
-        />
+        {duplicateCandidates.length === 0 ? (
+          <AppButton
+            label="保存修改"
+            icon="save-outline"
+            onPress={() => void save(false)}
+            theme={theme}
+            loading={saving}
+            disabled={deleting}
+            testID="edit-save"
+          />
+        ) : null}
         <AppButton
           label="删除这笔"
           icon="trash-outline"

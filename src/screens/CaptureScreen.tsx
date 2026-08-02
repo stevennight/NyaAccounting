@@ -21,6 +21,7 @@ import {
 
 import { AppButton } from '../components/AppButton';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
+import { DuplicateWarning } from '../components/DuplicateWarning';
 import { FormField } from '../components/FormField';
 import { IconButton } from '../components/IconButton';
 import { InlineNotice } from '../components/InlineNotice';
@@ -39,7 +40,6 @@ import {
   normalizeLocalTime,
 } from '../domain/date';
 import {
-  formatMoneyMinor,
   majorToMinor,
   minorToMajor,
 } from '../domain/money';
@@ -47,7 +47,6 @@ import {
   confirmTransactionDraft,
   findDuplicateCandidates,
   findRecurringExpenseMatch,
-  getTransactionLocalTime,
   normalizeTransactionDraft,
   validateTransactionDraft,
   type DuplicateCandidate,
@@ -1265,10 +1264,7 @@ export function CaptureScreen({
       );
       if (duplicates.length > 0 && !allowDuplicate) {
         setDuplicateCandidates(duplicates);
-        setNotice({
-          tone: 'warning',
-          message: '发现相似账目，请确认是否重复记录。',
-        });
+        setNotice(null);
         return;
       }
 
@@ -1392,63 +1388,6 @@ export function CaptureScreen({
                   : '未发现必须复核的字段。'
               }
             />
-          </View>
-        ) : null}
-
-        {duplicateCandidates.length > 0 ? (
-          <View
-            style={[
-              styles.duplicatePanel,
-              {
-                backgroundColor: `${theme.colors.warning}12`,
-                borderColor: `${theme.colors.warning}66`,
-              },
-            ]}
-          >
-            <View style={styles.duplicateTitleRow}>
-              <Ionicons
-                name="copy-outline"
-                size={19}
-                color={theme.colors.warning}
-              />
-              <Text style={[styles.duplicateTitle, { color: theme.colors.text }]}>
-                可能重复
-              </Text>
-            </View>
-            {duplicateCandidates.slice(0, 3).map((candidate) => (
-              <Text
-                key={candidate.transaction.id}
-                style={[styles.duplicateItem, { color: theme.colors.textMuted }]}
-              >
-                {candidate.transaction.date}
-                {getTransactionLocalTime(candidate.transaction)
-                  ? ` ${getTransactionLocalTime(candidate.transaction)}`
-                  : ''}{' '}
-                · {candidate.transaction.merchant} ·{' '}
-                {formatMoneyMinor(
-                  candidate.transaction.amountMinor,
-                  candidate.transaction.currency,
-                  settings.locale,
-                )}
-              </Text>
-            ))}
-            <View style={styles.buttonRow}>
-              <AppButton
-                theme={theme}
-                label="仍然保存"
-                icon="checkmark"
-                onPress={() => void saveDraft(true)}
-                loading={saving}
-                compact
-              />
-              <AppButton
-                theme={theme}
-                label="返回检查"
-                onPress={() => setDuplicateCandidates([])}
-                variant="secondary"
-                compact
-              />
-            </View>
           </View>
         ) : null}
 
@@ -1717,15 +1656,29 @@ export function CaptureScreen({
           />
         </View>
 
+        <DuplicateWarning
+          theme={theme}
+          candidates={duplicateCandidates}
+          locale={settings.locale}
+          saving={saving}
+          onSaveAnyway={() => void saveDraft(true)}
+          onReview={() => {
+            setDuplicateCandidates([]);
+            setNotice(null);
+          }}
+        />
+
         <View style={styles.footerActions}>
-          <AppButton
-            theme={theme}
-            label="确认保存"
-            icon="checkmark-circle-outline"
-            onPress={() => void saveDraft(false)}
-            loading={saving}
-            testID="capture-save"
-          />
+          {duplicateCandidates.length === 0 ? (
+            <AppButton
+              theme={theme}
+              label="确认保存"
+              icon="checkmark-circle-outline"
+              onPress={() => void saveDraft(false)}
+              loading={saving}
+              testID="capture-save"
+            />
+          ) : null}
           <AppButton
             theme={theme}
             label="返回输入"
@@ -2138,26 +2091,6 @@ const styles = StyleSheet.create({
   fieldHalf: {
     flex: 1,
     minWidth: 0,
-  },
-  duplicatePanel: {
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.lg,
-    gap: spacing.md,
-    marginBottom: spacing.xxl,
-  },
-  duplicateTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  duplicateTitle: {
-    fontSize: typography.sectionTitle,
-    fontWeight: '800',
-  },
-  duplicateItem: {
-    fontSize: typography.label,
-    lineHeight: 19,
   },
   footerActions: {
     gap: spacing.md,
