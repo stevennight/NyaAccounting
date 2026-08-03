@@ -13,6 +13,7 @@ import {
   Alert,
   Image,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -20,6 +21,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '../components/AppButton';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
@@ -85,7 +87,7 @@ export type CaptureScreenProps = {
   theme: AppTheme;
   onSaved?: (transaction: Transaction) => void;
   onCancel?: () => void;
-  initialScreenshotUri?: string | null;
+  initialScreenshotUris?: string[] | null;
   initialScreenshotError?: string | null;
   onInitialScreenshotConsumed?: () => void;
 };
@@ -410,7 +412,7 @@ export function CaptureScreen({
   theme,
   onSaved,
   onCancel,
-  initialScreenshotUri,
+  initialScreenshotUris,
   initialScreenshotError,
   onInitialScreenshotConsumed,
 }: CaptureScreenProps) {
@@ -433,6 +435,7 @@ export function CaptureScreen({
   const [recognizing, setRecognizing] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [pickingImage, setPickingImage] = useState(false);
+  const [fullscreenImageUri, setFullscreenImageUri] = useState<string | null>(null);
   const [stoppingRecording, setStoppingRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [duplicateCandidates, setDuplicateCandidates] = useState<
@@ -444,7 +447,18 @@ export function CaptureScreen({
   const mountedRef = useRef(true);
   const leavingRef = useRef(false);
   const voiceCaptureRef = useRef<VoiceCapture | null>(null);
-  const initialScreenshotLoadedRef = useRef<string | null>(null);
+  const initialScreenshotLoadedRef = useRef<Set<string>>(new Set());
+  const scrollRef = useRef<ScrollView>(null);
+
+  const openFullscreenImage = useCallback((uri: string) => {
+    setFullscreenImageUri(uri);
+  }, []);
+
+  const scrollCaptureToTop = useCallback(() => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    }, 0);
+  }, []);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder, 250);
@@ -529,25 +543,28 @@ export function CaptureScreen({
   );
 
   useEffect(() => {
-    if (
-      !initialScreenshotUri ||
-      initialScreenshotLoadedRef.current === initialScreenshotUri
-    ) {
+    const pendingUris = (initialScreenshotUris ?? []).filter(
+      (uri) => uri && !initialScreenshotLoadedRef.current.has(uri),
+    );
+    if (pendingUris.length === 0) {
+      if ((initialScreenshotUris ?? []).length > 0) {
+        onInitialScreenshotConsumed?.();
+      }
       return;
     }
-    initialScreenshotLoadedRef.current = initialScreenshotUri;
-    appendImageAssets([
-      {
-        uri: initialScreenshotUri,
+    pendingUris.forEach((uri) => initialScreenshotLoadedRef.current.add(uri));
+    appendImageAssets(
+      pendingUris.map((uri) => ({
+        uri,
         width: 0,
         height: 0,
         type: 'image',
-        fileName: '当前页面截图.png',
+        fileName: `当前页面截图-${Date.now()}.png`,
         mimeType: 'image/png',
-      },
-    ]);
+      })),
+    );
     onInitialScreenshotConsumed?.();
-  }, [appendImageAssets, initialScreenshotUri, onInitialScreenshotConsumed]);
+  }, [appendImageAssets, initialScreenshotUris, onInitialScreenshotConsumed]);
 
   useEffect(() => {
     if (initialScreenshotError) {
@@ -747,6 +764,7 @@ export function CaptureScreen({
     voiceCaptureRef.current = null;
     deleteTemporaryUri(voiceUri);
     deleteTemporaryUri(audioRecorder.uri);
+    setFullscreenImageUri(null);
     onCancel?.();
   }, [audioRecorder, onCancel]);
 
@@ -1724,10 +1742,11 @@ export function CaptureScreen({
         if (remainingQueue.length > 0) {
           setReviewQueue(remainingQueue);
           activateReviewQueueItem(remainingQueue[0]);
+          scrollCaptureToTop();
           if (mountedRef.current && !leavingRef.current) {
             setNotice({
               tone: 'success',
-              message: `已保存当前账目，还有 ${remainingQueue.length} 笔待核对。`,
+              message: `已保存当前账目，已切换到下一笔；还有 ${remainingQueue.length} 笔待核对。`,
             });
           }
           return;
@@ -1780,6 +1799,7 @@ export function CaptureScreen({
       onSaved,
       resetAfterSave,
       reviewQueue,
+      scrollCaptureToTop,
       settings.categories,
       timeError,
       timeInput,
@@ -1795,6 +1815,46 @@ export function CaptureScreen({
       : null,
   ].filter((value): value is string => Boolean(value));
 
+  const fullscreenImagePreview = (
+    <Modal
+      visible={fullscreenImageUri !== null}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={() => setFullscreenImageUri(null)}
+      testID="capture-fullscreen-preview"
+    >
+      <SafeAreaView style={styles.fullscreenModal}>
+        <View style={styles.fullscreenToolbar}>
+          <Text style={styles.fullscreenTitle}>截图预览</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="关闭截图预览"
+            onPress={() => setFullscreenImageUri(null)}
+            style={({ pressed }) => [
+              styles.fullscreenClose,
+              { opacity: pressed ? 0.65 : 1 },
+            ]}
+            testID="capture-fullscreen-close"
+          >
+            <Ionicons name="close" size={24} color="#FFFFFF" />
+          </Pressable>
+        </View>
+        <View style={styles.fullscreenImageBody}>
+          {fullscreenImageUri ? (
+            <Image
+              source={{ uri: fullscreenImageUri }}
+              resizeMode="contain"
+              style={styles.fullscreenImage}
+              accessibilityLabel="全屏消费截图"
+            />
+          ) : null}
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+
   const failedReviewItem = reviewQueue[0];
   if (failedReviewItem && !failedReviewItem.draft) {
     const failedAsset = failedReviewItem.asset;
@@ -1807,6 +1867,7 @@ export function CaptureScreen({
       <Screen
         theme={theme}
         bottomNavigation={false}
+        scrollRef={scrollRef}
         testID="capture-failed-review-screen"
       >
         <PageHeader
@@ -1820,20 +1881,27 @@ export function CaptureScreen({
         <View style={styles.section}>
           <InlineNotice
             theme={theme}
-            tone="warning"
-            message={failedReviewItem.error ?? '这笔截图识别失败，请重试。'}
+            tone={notice?.tone ?? 'warning'}
+            message={notice?.message ?? failedReviewItem.error ?? '这笔截图识别失败，请重试。'}
           />
-        {failedAsset ? (
-            <Image
-              source={{ uri: failedAsset.uri }}
-              resizeMode="contain"
-              style={[
-                styles.reviewPreview,
-                { backgroundColor: theme.colors.surfaceMuted },
-              ]}
-              accessibilityLabel="识别失败的消费截图"
-              testID="capture-failed-screenshot"
-            />
+          {failedAsset ? (
+            <Pressable
+              onPress={() => openFullscreenImage(failedAsset.uri)}
+              accessibilityRole="button"
+              accessibilityLabel="全屏查看识别失败的消费截图"
+              style={styles.reviewPreviewTap}
+            >
+              <Image
+                source={{ uri: failedAsset.uri }}
+                resizeMode="contain"
+                style={[
+                  styles.reviewPreview,
+                  { backgroundColor: theme.colors.surfaceMuted },
+                ]}
+                accessibilityLabel="识别失败的消费截图"
+                testID="capture-failed-screenshot"
+              />
+            </Pressable>
           ) : null}
           {recognizing && recognitionProgress ? (
             <RecognitionProgressPanel
@@ -1871,6 +1939,7 @@ export function CaptureScreen({
               variant="quiet"
             />
           </View>
+          {fullscreenImagePreview}
         </View>
       </Screen>
     );
@@ -1891,6 +1960,7 @@ export function CaptureScreen({
         theme={theme}
         keyboard
         bottomNavigation={false}
+        scrollRef={scrollRef}
         testID="capture-review-screen"
       >
         <PageHeader
@@ -1919,16 +1989,23 @@ export function CaptureScreen({
               title="原始截图"
               subtitle="核对识别结果时可直接对照原图"
             />
-            <Image
-              source={{ uri: reviewAsset.uri }}
-              resizeMode="contain"
-              style={[
-                styles.reviewPreview,
-                { backgroundColor: theme.colors.surfaceMuted },
-              ]}
-              accessibilityLabel="待核对的消费截图"
-              testID="capture-review-screenshot"
-            />
+            <Pressable
+              onPress={() => openFullscreenImage(reviewAsset.uri)}
+              accessibilityRole="button"
+              accessibilityLabel="全屏查看待核对的消费截图"
+              style={styles.reviewPreviewTap}
+            >
+              <Image
+                source={{ uri: reviewAsset.uri }}
+                resizeMode="contain"
+                style={[
+                  styles.reviewPreview,
+                  { backgroundColor: theme.colors.surfaceMuted },
+                ]}
+                accessibilityLabel="待核对的消费截图"
+                testID="capture-review-screenshot"
+              />
+            </Pressable>
             <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
               {[reviewAsset.fileName || '已选择图片', `${reviewAsset.width} × ${reviewAsset.height}`]
                 .filter(Boolean)
@@ -2257,6 +2334,7 @@ export function CaptureScreen({
             variant="secondary"
           />
         </View>
+        {fullscreenImagePreview}
       </Screen>
     );
   }
@@ -2266,6 +2344,7 @@ export function CaptureScreen({
       theme={theme}
       keyboard
       bottomNavigation={false}
+      scrollRef={scrollRef}
       testID="capture-screen"
     >
       <PageHeader
@@ -2410,15 +2489,22 @@ export function CaptureScreen({
                       testID="capture-image-next"
                     />
                   </View>
-                  <Image
-                    source={{ uri: activeImage.asset.uri }}
-                    resizeMode="contain"
-                    style={[
-                      styles.preview,
-                      { backgroundColor: theme.colors.surfaceMuted },
-                    ]}
-                    accessibilityLabel="当前正在补充说明的消费截图"
-                  />
+                  <Pressable
+                    onPress={() => openFullscreenImage(activeImage.asset.uri)}
+                    accessibilityRole="button"
+                    accessibilityLabel="全屏查看当前消费截图"
+                    style={styles.previewTap}
+                  >
+                    <Image
+                      source={{ uri: activeImage.asset.uri }}
+                      resizeMode="contain"
+                      style={[
+                        styles.preview,
+                        { backgroundColor: theme.colors.surfaceMuted },
+                      ]}
+                      accessibilityLabel="当前正在补充说明的消费截图"
+                    />
+                  </Pressable>
                   <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
                     {[activeImage.asset.fileName || '已选择图片', `${activeImage.asset.width} × ${activeImage.asset.height}`, formatBytes(activeImage.asset.fileSize)]
                       .filter(Boolean)
@@ -2671,6 +2757,7 @@ export function CaptureScreen({
           testID="capture-manual"
         />
       </View>
+      {fullscreenImagePreview}
     </Screen>
   );
 }
@@ -2697,10 +2784,53 @@ const styles = StyleSheet.create({
     height: 240,
     borderRadius: radii.sm,
   },
+  previewTap: {
+    width: '100%',
+    height: 240,
+  },
   reviewPreview: {
     width: '100%',
     height: 360,
     borderRadius: radii.sm,
+  },
+  reviewPreviewTap: {
+    width: '100%',
+    height: 360,
+  },
+  fullscreenModal: {
+    flex: 1,
+    backgroundColor: '#0A0D0C',
+  },
+  fullscreenToolbar: {
+    minHeight: 54,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  fullscreenTitle: {
+    color: '#FFFFFF',
+    fontSize: typography.body,
+    fontWeight: '800',
+  },
+  fullscreenClose: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  fullscreenImageBody: {
+    flex: 1,
+    width: '100%',
+    padding: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
   },
   recognitionProgress: {
     borderWidth: 1,

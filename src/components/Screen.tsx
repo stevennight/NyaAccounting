@@ -1,4 +1,4 @@
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, RefObject } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,6 +19,7 @@ type ScreenProps = PropsWithChildren<{
   bottomNavigation?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
   testID?: string;
+  scrollRef?: RefObject<ScrollView | null>;
 }>;
 
 export function Screen({
@@ -29,10 +30,12 @@ export function Screen({
   bottomNavigation = true,
   contentStyle,
   testID,
+  scrollRef,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const content = scroll ? (
     <ScrollView
+      ref={scrollRef}
       testID={testID}
       contentContainerStyle={[
         styles.content,

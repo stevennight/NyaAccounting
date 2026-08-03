@@ -36,13 +36,14 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
 
   override fun onInterrupt() = Unit
 
-  fun captureCurrentScreen() {
+  fun captureCurrentScreen(onFinished: (() -> Unit)? = null): Boolean {
     if (capturing) {
-      return
+      return false
     }
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
       deliverError("当前 Android 版本不支持直接截取页面。")
-      return
+      onFinished?.invoke()
+      return false
     }
 
     capturing = true
@@ -51,36 +52,47 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     // settled so the system panel is not included in the bitmap.
     mainHandler.postDelayed({
       if (capturing && instance === this) {
-        takeScreenshot(
-          Display.DEFAULT_DISPLAY,
-          mainExecutor,
-          object : TakeScreenshotCallback {
-            override fun onSuccess(screenshot: ScreenshotResult) {
-              try {
-                saveScreenshot(screenshot)
-              } catch (error: Exception) {
-                deliverError(error.message ?: "无法保存当前页面截图。")
-              } finally {
-                capturing = false
+        try {
+          takeScreenshot(
+            Display.DEFAULT_DISPLAY,
+            mainExecutor,
+            object : TakeScreenshotCallback {
+              override fun onSuccess(screenshot: ScreenshotResult) {
+                try {
+                  saveScreenshot(screenshot)
+                } catch (error: Exception) {
+                  deliverError(error.message ?: "无法保存当前页面截图。")
+                } finally {
+                  capturing = false
+                  onFinished?.invoke()
+                }
               }
-            }
 
-            override fun onFailure(errorCode: Int) {
-              capturing = false
-              deliverError("系统截图失败（错误码 $errorCode），请重试。")
-            }
-          },
-        )
+              override fun onFailure(errorCode: Int) {
+                capturing = false
+                deliverError("系统截图失败（错误码 $errorCode），请重试。")
+                onFinished?.invoke()
+              }
+            },
+          )
+        } catch (error: Exception) {
+          capturing = false
+          deliverError(error.message ?: "系统截图暂时不可用，请重试。")
+          onFinished?.invoke()
+        }
+      } else {
+        onFinished?.invoke()
       }
     }, SCREENSHOT_DELAY_MILLIS)
+    return true
   }
 
   private fun dismissNotificationShade() {
-    val dismissed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    // This global action is available before Android 12 as well. Calling it
+    // on Android 11 avoids falling back to the less reliable broadcast path.
+    val dismissed = runCatching {
       performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
-    } else {
-      false
-    }
+    }.getOrDefault(false)
     if (!dismissed) {
       runCatching {
         sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
@@ -99,7 +111,12 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
       ?: throw IllegalStateException("系统没有返回有效截图。")
     hardwareBitmap.recycle()
 
-    val file = File(cacheDir, "current-screen-${System.currentTimeMillis()}.png")
+    val captureDirectory = File(filesDir, "screen-captures").apply {
+      if (!exists() && !mkdirs()) {
+        throw IllegalStateException("无法创建截图存储目录。")
+      }
+    }
+    val file = File(captureDirectory, "current-screen-${System.currentTimeMillis()}.png")
     try {
       FileOutputStream(file).use { output ->
         if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
@@ -111,28 +128,16 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     }
 
     ScreenCaptureStore.savePendingUri(this, file.toURI().toString())
-    launchMainActivity()
+    ScreenCaptureNotification.refresh(this)
   }
 
   private fun deliverError(message: String) {
     ScreenCaptureStore.savePendingError(this, message)
-    launchMainActivity()
-  }
-
-  private fun launchMainActivity() {
-    startActivity(
-      android.content.Intent(this, MainActivity::class.java).apply {
-        addFlags(
-          android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-            android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
-            android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP,
-        )
-      },
-    )
+    ScreenCaptureNotification.refresh(this)
   }
 
   companion object {
-    private const val SCREENSHOT_DELAY_MILLIS = 400L
+    private const val SCREENSHOT_DELAY_MILLIS = 650L
 
     @Volatile
     var instance: ScreenCaptureAccessibilityService? = null

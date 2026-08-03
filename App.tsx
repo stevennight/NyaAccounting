@@ -27,7 +27,7 @@ import { SettingsScreen } from './src/screens/SettingsScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
 import { TransactionEditScreen } from './src/screens/TransactionEditScreen';
 import {
-  consumePendingScreenCapture,
+  consumePendingScreenCaptures,
   consumePendingScreenCaptureError,
 } from './src/services';
 import { useHardwareBack } from './src/hooks/useHardwareBack';
@@ -55,10 +55,10 @@ function AppContent() {
   const [routes, setRoutes] = useState<AppRoute[]>([
     { type: 'tab', tab: 'home' },
   ]);
-  const [pendingScreenshotUri, setPendingScreenshotUri] = useState<string | null>(null);
+  const [pendingScreenshotUris, setPendingScreenshotUris] = useState<string[]>([]);
   const [pendingScreenshotError, setPendingScreenshotError] = useState<string | null>(null);
   const clearPendingScreenshot = useCallback(() => {
-    setPendingScreenshotUri(null);
+    setPendingScreenshotUris([]);
     setPendingScreenshotError(null);
   }, []);
   const currentRoute = routes[routes.length - 1];
@@ -69,13 +69,13 @@ function AppContent() {
     }
     let active = true;
     const consumePendingCapture = () => Promise.all([
-      consumePendingScreenCapture().catch(() => null),
+      consumePendingScreenCaptures().catch(() => []),
       consumePendingScreenCaptureError().catch(() => null),
-    ]).then(([uri, error]) => {
-      if (!active || (!uri && !error)) {
+    ]).then(([uris, error]) => {
+      if (!active || (uris.length === 0 && !error)) {
         return;
       }
-      setPendingScreenshotUri(uri);
+      setPendingScreenshotUris(uris);
       setPendingScreenshotError(error);
       setRoutes((current) =>
         current.some((route) => route.type === 'capture')
@@ -241,7 +241,7 @@ function AppContent() {
         theme={theme}
         onSaved={goBack}
         onCancel={goBack}
-        initialScreenshotUri={pendingScreenshotUri}
+        initialScreenshotUris={pendingScreenshotUris}
         initialScreenshotError={pendingScreenshotError}
         onInitialScreenshotConsumed={clearPendingScreenshot}
       />

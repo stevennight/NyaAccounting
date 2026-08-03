@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   PermissionsAndroid,
@@ -26,6 +26,12 @@ import {
   openCurrentScreenCaptureSettings,
   showCurrentScreenCaptureNotification,
   hideCurrentScreenCaptureNotification,
+  isScreenCaptureOverlayPermissionGranted,
+  openScreenCaptureOverlaySettings,
+  isScreenCaptureOverlayRunning,
+  startScreenCaptureOverlay,
+  stopScreenCaptureOverlay,
+  getPendingScreenCaptureCount,
 } from '../services';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
@@ -166,6 +172,9 @@ export function SettingsScreen({
   const [screenCaptureEnabled, setScreenCaptureEnabled] = useState(false);
   const [captureNotificationEnabled, setCaptureNotificationEnabled] =
     useState(false);
+  const [overlayPermissionGranted, setOverlayPermissionGranted] = useState(false);
+  const [overlayRunning, setOverlayRunning] = useState(false);
+  const [pendingScreenshotCount, setPendingScreenshotCount] = useState(0);
 
   const updateSettingSafely = (
     patch: Parameters<typeof updateSettings>[0],
@@ -205,14 +214,26 @@ export function SettingsScreen({
     };
   }, []);
 
-  useEffect(() => {
+  const refreshScreenCaptureStatus = useCallback(async () => {
     if (Platform.OS !== 'android') {
       return;
     }
-    isCurrentScreenCaptureEnabled()
-      .then(setScreenCaptureEnabled)
-      .catch(() => setScreenCaptureEnabled(false));
+    const [serviceEnabled, overlayAllowed, running, pendingCount] =
+      await Promise.all([
+        isCurrentScreenCaptureEnabled().catch(() => false),
+        isScreenCaptureOverlayPermissionGranted().catch(() => false),
+        isScreenCaptureOverlayRunning().catch(() => false),
+        getPendingScreenCaptureCount().catch(() => 0),
+      ]);
+    setScreenCaptureEnabled(serviceEnabled);
+    setOverlayPermissionGranted(overlayAllowed);
+    setOverlayRunning(running);
+    setPendingScreenshotCount(pendingCount);
   }, []);
+
+  useEffect(() => {
+    void refreshScreenCaptureStatus();
+  }, [refreshScreenCaptureStatus]);
 
   useEffect(() => {
     setBudget(
@@ -437,7 +458,7 @@ export function SettingsScreen({
       setCaptureNotificationEnabled(true);
       setNotice({
         tone: 'success',
-        message: '通知栏截图按钮已开启。打开支付宝等页面后，点通知中的“截图记账”即可。',
+        message: '通知栏截图按钮已开启。截图不会自动打开应用，完成后点“打开待录账单”。',
       });
     } catch (error) {
       setNotice({
@@ -451,6 +472,69 @@ export function SettingsScreen({
     await hideCurrentScreenCaptureNotification();
     setCaptureNotificationEnabled(false);
     setNotice({ tone: 'success', message: '通知栏截图按钮已关闭。' });
+  };
+
+  const handleOpenOverlaySettings = async () => {
+    try {
+      await openScreenCaptureOverlaySettings();
+      setNotice({
+        tone: 'info',
+        message: '请允许 Nya 记账显示在其他应用上层，然后返回这里开启悬浮球。',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '无法打开悬浮窗设置。',
+      });
+    }
+  };
+
+  const handleStartOverlay = async () => {
+    try {
+      const allowed = await isScreenCaptureOverlayPermissionGranted();
+      setOverlayPermissionGranted(allowed);
+      if (!allowed) {
+        await handleOpenOverlaySettings();
+        return;
+      }
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        const permission = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        );
+        if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          setNotice({ tone: 'warning', message: '通知权限未开启，无法运行悬浮球服务。' });
+          return;
+        }
+      }
+      const started = await startScreenCaptureOverlay();
+      if (!started) {
+        throw new Error('悬浮球未能启动，请检查通知权限和悬浮窗权限。');
+      }
+      setOverlayRunning(true);
+      setCaptureNotificationEnabled(true);
+      setNotice({
+        tone: 'success',
+        message: '悬浮球已开启。点击悬浮球只会截图，不会打断当前页面；完成后从通知栏打开待录账单。',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '无法开启悬浮球。',
+      });
+    }
+  };
+
+  const handleStopOverlay = async () => {
+    try {
+      await stopScreenCaptureOverlay();
+      setOverlayRunning(false);
+      setNotice({ tone: 'success', message: '悬浮球已关闭。' });
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '无法关闭悬浮球。',
+      });
+    }
   };
 
   const handleExport = async () => {
@@ -844,8 +928,38 @@ export function SettingsScreen({
               compact
             />
           </View>
+          <View style={styles.buttonRow}>
+            <AppButton
+              label={overlayPermissionGranted ? '刷新悬浮窗权限' : '允许显示悬浮球'}
+              icon="layers-outline"
+              onPress={() => void handleOpenOverlaySettings()}
+              theme={theme}
+              variant="secondary"
+              compact
+            />
+            <AppButton
+              label={
+                overlayPermissionGranted
+                  ? overlayRunning
+                    ? '关闭悬浮球'
+                    : '开启悬浮球'
+                  : '先允许悬浮窗'
+              }
+              icon={overlayRunning ? 'close-circle-outline' : 'radio-button-on-outline'}
+              onPress={() =>
+                void (overlayRunning ? handleStopOverlay() : handleStartOverlay())
+              }
+              theme={theme}
+              variant={overlayRunning ? 'danger' : 'secondary'}
+              disabled={!screenCaptureEnabled && !overlayRunning}
+              compact
+            />
+          </View>
           <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>
-            开启后 Nya 记账会在通知栏常驻一个“截图记账”按钮；点击后会自动返回本应用，截图进入批量录入页。
+            悬浮球截图只写入待录队列，不会每次打开 Nya 记账；当前待录截图 {pendingScreenshotCount} 张，完成后从通知栏点击“打开待录账单”。
+          </Text>
+          <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>
+            通知栏可以随时开启或关闭悬浮球。首次使用需要同时启用无障碍截图服务、通知权限和悬浮窗权限。
           </Text>
         </View>
       ) : null}
