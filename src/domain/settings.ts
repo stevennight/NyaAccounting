@@ -1,10 +1,10 @@
 import {
   AI_REASONING_EFFORTS,
-  PAYMENT_CHANNELS,
   type AiSettings,
   type AppSettings,
   type CategoryDefinition,
   type CategoryId,
+  type PaymentChannelDefinition,
   type PaymentChannel,
 } from './types';
 import {
@@ -13,6 +13,7 @@ import {
   isCategoryId,
   normalizeCategoryDefinitions,
 } from './categories';
+import { DEFAULT_PAYMENT_CHANNEL_DEFINITIONS } from './paymentChannels';
 import { normalizeCurrencyCode } from './money';
 
 export const DEFAULT_AI_SETTINGS: Readonly<AiSettings> = {
@@ -37,6 +38,7 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = {
   budgetDangerRatio: 0.95,
   defaultCategoryId: 'other',
   defaultPaymentChannel: 'unknown',
+  paymentChannels: DEFAULT_PAYMENT_CHANNEL_DEFINITIONS.map((item) => ({ ...item })),
   firstDayOfWeek: 1,
   theme: 'system',
   deleteRawSourcesAfterConfirmation: true,
@@ -95,6 +97,34 @@ function fallbackCategoryId(
   );
 }
 
+function normalizePaymentChannels(value: unknown): PaymentChannelDefinition[] {
+  const raw = Array.isArray(value) ? value : DEFAULT_PAYMENT_CHANNEL_DEFINITIONS;
+  const seen = new Set<string>();
+  const normalized: PaymentChannelDefinition[] = [];
+
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    const label = typeof record.label === 'string' ? record.label.trim() : '';
+    if (!id || !label || id.length > 100 || label.length > 100 || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    normalized.push({ id, label });
+  }
+
+  for (const builtin of DEFAULT_PAYMENT_CHANNEL_DEFINITIONS) {
+    if (!seen.has(builtin.id)) {
+      normalized.push({ ...builtin });
+    }
+  }
+
+  return normalized;
+}
+
 export function createDefaultAppSettings(
   patch: AppSettingsPatch = {},
 ): AppSettings {
@@ -118,6 +148,7 @@ export function createDefaultAppSettings(
       patch.categoryBudgetsMinor,
       categories,
     ),
+    paymentChannels: normalizePaymentChannels(patch.paymentChannels),
     defaultCategoryId,
     ai: {
       ...DEFAULT_AI_SETTINGS,
@@ -148,11 +179,10 @@ export function normalizeAppSettings(input: unknown): AppSettings {
       DEFAULT_APP_SETTINGS.budgetDangerRatio,
     ),
   );
+  const paymentChannels = normalizePaymentChannels(record.paymentChannels);
   const defaultPaymentChannel =
     typeof record.defaultPaymentChannel === 'string' &&
-    (PAYMENT_CHANNELS as readonly string[]).includes(
-      record.defaultPaymentChannel,
-    )
+    paymentChannels.some((item) => item.id === record.defaultPaymentChannel)
       ? (record.defaultPaymentChannel as PaymentChannel)
       : DEFAULT_APP_SETTINGS.defaultPaymentChannel;
 
@@ -186,6 +216,7 @@ export function normalizeAppSettings(input: unknown): AppSettings {
       ? record.defaultCategoryId
       : fallbackCategoryId(categories),
     defaultPaymentChannel,
+    paymentChannels,
     firstDayOfWeek:
       record.firstDayOfWeek === 0 || record.firstDayOfWeek === 1
         ? record.firstDayOfWeek

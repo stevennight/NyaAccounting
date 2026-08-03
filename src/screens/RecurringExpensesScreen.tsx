@@ -21,8 +21,8 @@ import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
 import {
   getCategoryDefinition,
-  PAYMENT_CHANNEL_LABELS,
 } from '../domain/categories';
+import { paymentChannelLabel, paymentChannelOptions } from '../domain/paymentChannels';
 import { formatLocalDate, isLocalDate } from '../domain/date';
 import {
   formatMoneyMinor,
@@ -35,7 +35,6 @@ import {
   AppSettings,
   CategoryDefinition,
   CategoryId,
-  PAYMENT_CHANNELS,
   PaymentChannel,
   RecurrenceCadence,
   RecurringExpense,
@@ -92,12 +91,6 @@ const cadenceOptions: Array<ChoiceOption<RecurrenceCadence>> = [
   { value: 'quarterly', label: '季' },
   { value: 'yearly', label: '年' },
 ];
-
-const channelOptions: Array<ChoiceOption<PaymentChannel>> =
-  PAYMENT_CHANNELS.map((value) => ({
-    value,
-    label: PAYMENT_CHANNEL_LABELS[value],
-  }));
 
 const cadenceLabels: Record<RecurrenceCadence, string> = {
   weekly: '周',
@@ -288,6 +281,10 @@ export function RecurringExpensesScreen({
       })),
     ],
     [selectedCategory],
+  );
+  const channelOptions = useMemo(
+    () => paymentChannelOptions(dataset.settings.paymentChannels),
+    [dataset.settings.paymentChannels],
   );
   const hasChanges = !formsMatch(form, initialForm);
 
@@ -949,7 +946,10 @@ export function RecurringExpensesScreen({
                     style={[styles.meta, { color: theme.colors.textMuted }]}
                   >
                     {[
-                      PAYMENT_CHANNEL_LABELS[expense.paymentChannel],
+                      paymentChannelLabel(
+                        expense.paymentChannel,
+                        dataset.settings.paymentChannels,
+                      ),
                       expense.endDate
                         ? `${expense.startDate} 至 ${expense.endDate}`
                         : `${expense.startDate} 起`,

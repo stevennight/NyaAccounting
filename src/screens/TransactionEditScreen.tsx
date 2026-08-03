@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
 import {
-  PAYMENT_CHANNEL_LABELS,
   TRANSACTION_KIND_LABELS,
   TRANSACTION_STATUS_LABELS,
 } from '../domain/categories';
@@ -21,7 +20,7 @@ import {
   CategoryId,
   FUNDING_INSTRUMENT_TYPES,
   FundingInstrumentType,
-  PAYMENT_CHANNELS,
+  PaymentChannelDefinition,
   PaymentChannel,
   RecurringExpense,
   TRANSACTION_KINDS,
@@ -30,6 +29,7 @@ import {
   TransactionKind,
   TransactionStatus,
 } from '../domain/types';
+import { paymentChannelOptions } from '../domain/paymentChannels';
 import { AppTheme, spacing, typography } from '../theme';
 import { useHardwareBack } from '../hooks/useHardwareBack';
 import { AppButton } from '../components/AppButton';
@@ -52,6 +52,7 @@ type TransactionEditScreenProps = {
   locale: string;
   categories: readonly CategoryDefinition[];
   recurringExpenses: readonly RecurringExpense[];
+  paymentChannels: readonly PaymentChannelDefinition[];
   onSave: (transaction: Transaction) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onCancel: () => void;
@@ -66,10 +67,6 @@ const statusOptions: Array<ChoiceOption<TransactionStatus>> =
     value,
     label: TRANSACTION_STATUS_LABELS[value],
   }));
-
-const channelOptions: Array<ChoiceOption<PaymentChannel>> = PAYMENT_CHANNELS.map(
-  (value) => ({ value, label: PAYMENT_CHANNEL_LABELS[value] }),
-);
 
 const fundingTypeLabels: Record<FundingInstrumentType, string> = {
   credit_card: '信用卡',
@@ -97,6 +94,7 @@ export function TransactionEditScreen({
   locale,
   categories,
   recurringExpenses,
+  paymentChannels,
   onSave,
   onDelete,
   onCancel,
@@ -136,6 +134,10 @@ export function TransactionEditScreen({
   const [duplicateCandidates, setDuplicateCandidates] = useState<
     DuplicateCandidate[]
   >([]);
+  const channelOptions = useMemo(
+    () => paymentChannelOptions(paymentChannels),
+    [paymentChannels],
+  );
 
   const recurringOptions = useMemo<Array<ChoiceOption<string>>>(
     () => [
@@ -547,19 +549,20 @@ export function TransactionEditScreen({
           <View style={styles.flexField}>
             <FormField
               theme={theme}
-              label="机构（可选）"
+              label="发卡机构（可选）"
               value={issuer}
               onChangeText={setIssuer}
-              placeholder="例如：招商银行"
+              placeholder="仅填写银行或金融机构，例如：招商银行"
+              hint="机构只填银行/金融机构；卡类型写在卡/账户名称"
             />
           </View>
           <View style={styles.flexField}>
             <FormField
               theme={theme}
-              label="名称（可选）"
+              label="卡/账户名称（可选）"
               value={fundingLabel}
               onChangeText={setFundingLabel}
-              placeholder="例如：Visa"
+              placeholder="例如：网商银行储蓄卡、Visa"
             />
           </View>
         </View>

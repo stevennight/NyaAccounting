@@ -6,7 +6,6 @@ import { isLocalDate, isLocalTime } from '../domain/date';
 import { normalizeAppSettings } from '../domain/settings';
 import {
   FUNDING_INSTRUMENT_TYPES,
-  PAYMENT_CHANNELS,
   RECURRENCE_CADENCES,
   TRANSACTION_KINDS,
   TRANSACTION_SOURCES,
@@ -29,7 +28,6 @@ const MAX_TRANSACTIONS = 100_000;
 const MAX_RECURRING_EXPENSES = 10_000;
 
 const fundingInstrumentTypes = new Set<string>(FUNDING_INSTRUMENT_TYPES);
-const paymentChannels = new Set<string>(PAYMENT_CHANNELS);
 const recurrenceCadences = new Set<string>(RECURRENCE_CADENCES);
 const transactionKinds = new Set<string>(TRANSACTION_KINDS);
 const transactionSources = new Set<string>(TRANSACTION_SOURCES);
@@ -194,6 +192,7 @@ function validateTransaction(
   index: number,
   categoryIds: ReadonlySet<string>,
   categories: readonly CategoryDefinition[],
+  paymentChannelIds: ReadonlySet<string>,
 ): Transaction {
   const path = `dataset.transactions[${index}]`;
   const transaction = expectRecord(value, path);
@@ -225,7 +224,7 @@ function validateTransaction(
   ) {
     validationError(`${path}.subcategoryId`, '不属于当前分类。');
   }
-  expectEnum(transaction.paymentChannel, paymentChannels, `${path}.paymentChannel`);
+  expectEnum(transaction.paymentChannel, paymentChannelIds, `${path}.paymentChannel`);
   if (transaction.fundingInstrument !== undefined) {
     validateFundingInstrument(
       transaction.fundingInstrument,
@@ -251,6 +250,7 @@ function validateRecurringExpense(
   index: number,
   categoryIds: ReadonlySet<string>,
   categories: readonly CategoryDefinition[],
+  paymentChannelIds: ReadonlySet<string>,
 ): RecurringExpense {
   const path = `dataset.recurringExpenses[${index}]`;
   const expense = expectRecord(value, path);
@@ -293,7 +293,7 @@ function validateRecurringExpense(
     }
   }
   expectBoolean(expense.active, `${path}.active`);
-  expectEnum(expense.paymentChannel, paymentChannels, `${path}.paymentChannel`);
+  expectEnum(expense.paymentChannel, paymentChannelIds, `${path}.paymentChannel`);
   if (expense.fundingInstrument !== undefined) {
     validateFundingInstrument(expense.fundingInstrument, `${path}.fundingInstrument`);
   }
@@ -383,6 +383,22 @@ function validateSettings(value: unknown): AppSettings {
   const categoryIds = new Set(
     normalizedSettings.categories.map((category) => category.id),
   );
+  if (settings.paymentChannels !== undefined) {
+    if (!Array.isArray(settings.paymentChannels) || settings.paymentChannels.length > 100) {
+      validationError(`${path}.paymentChannels`, '支付渠道配置无效。');
+    }
+    const seenPaymentChannelIds = new Set<string>();
+    settings.paymentChannels.forEach((value, index) => {
+      const channelPath = `${path}.paymentChannels[${index}]`;
+      const channel = expectRecord(value, channelPath);
+      const id = expectString(channel.id, `${channelPath}.id`, { maximumLength: 100 });
+      if (seenPaymentChannelIds.has(id)) {
+        validationError(`${channelPath}.id`, '支付渠道 ID 重复。');
+      }
+      seenPaymentChannelIds.add(id);
+      expectString(channel.label, `${channelPath}.label`, { maximumLength: 100 });
+    });
+  }
 
   const categoryBudgets = expectRecord(
     settings.categoryBudgetsMinor,
@@ -423,7 +439,7 @@ function validateSettings(value: unknown): AppSettings {
   expectEnum(settings.defaultCategoryId, categoryIds, `${path}.defaultCategoryId`);
   expectEnum(
     settings.defaultPaymentChannel,
-    paymentChannels,
+    new Set(normalizedSettings.paymentChannels.map((item) => item.id)),
     `${path}.defaultPaymentChannel`,
   );
   if (settings.defaultFundingInstrument !== undefined) {
@@ -491,6 +507,9 @@ export function validateDomainDataset(value: unknown): DomainDataset {
   const categoryIds = new Set(
     settings.categories.map((category) => category.id),
   );
+  const paymentChannelIds = new Set(
+    settings.paymentChannels.map((item) => item.id),
+  );
 
   if (!Array.isArray(dataset.transactions)) {
     validationError('dataset.transactions', '应为数组。');
@@ -507,6 +526,7 @@ export function validateDomainDataset(value: unknown): DomainDataset {
       index,
       categoryIds,
       settings.categories,
+      paymentChannelIds,
     ),
   );
   assertUniqueIds(transactions, 'dataset.transactions');
@@ -527,6 +547,7 @@ export function validateDomainDataset(value: unknown): DomainDataset {
         index,
         categoryIds,
         settings.categories,
+        paymentChannelIds,
       ),
   );
   assertUniqueIds(recurringExpenses, 'dataset.recurringExpenses');

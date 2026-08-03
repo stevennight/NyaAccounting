@@ -4,6 +4,7 @@ export * from './date';
 export * from './demoData';
 export * from './money';
 export * from './normalize';
+export * from './paymentChannels';
 export * from './recurring';
 export * from './settings';
 export * from './transactions';

@@ -33,6 +33,7 @@ import {
   stopScreenCaptureOverlay,
   getPendingScreenCaptureCount,
 } from '../services';
+import { DEFAULT_PAYMENT_CHANNEL_DEFINITIONS } from '../domain/paymentChannels';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
 import { AppButton } from '../components/AppButton';
@@ -175,6 +176,7 @@ export function SettingsScreen({
   const [overlayPermissionGranted, setOverlayPermissionGranted] = useState(false);
   const [overlayRunning, setOverlayRunning] = useState(false);
   const [pendingScreenshotCount, setPendingScreenshotCount] = useState(0);
+  const [newPaymentChannelLabel, setNewPaymentChannelLabel] = useState('');
 
   const updateSettingSafely = (
     patch: Parameters<typeof updateSettings>[0],
@@ -327,6 +329,55 @@ export function SettingsScreen({
     }
   };
 
+  const addPaymentChannel = () => {
+    const label = newPaymentChannelLabel.trim();
+    if (!label) {
+      setNotice({ tone: 'warning', message: '请先填写支付渠道名称。' });
+      return;
+    }
+    if (
+      settings.paymentChannels.some(
+        (item) => item.label.toLocaleLowerCase() === label.toLocaleLowerCase(),
+      )
+    ) {
+      setNotice({ tone: 'warning', message: '这个支付渠道已经存在。' });
+      return;
+    }
+    const id = `custom_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
+    updateSettingSafely({
+      paymentChannels: [...settings.paymentChannels, { id, label }],
+    });
+    setNewPaymentChannelLabel('');
+    setNotice({ tone: 'success', message: '支付渠道已添加。' });
+  };
+
+  const removePaymentChannel = (id: string) => {
+    if (
+      DEFAULT_PAYMENT_CHANNEL_DEFINITIONS.some((item) => item.id === id)
+    ) {
+      return;
+    }
+    if (
+      dataset.transactions.some((item) => item.paymentChannel === id) ||
+      dataset.recurringExpenses.some((item) => item.paymentChannel === id)
+    ) {
+      setNotice({
+        tone: 'warning',
+        message: '已有账单或固定支出使用这个渠道，暂时不能删除。',
+      });
+      return;
+    }
+    updateSettingSafely({
+      paymentChannels: settings.paymentChannels.filter((item) => item.id !== id),
+      ...(settings.defaultPaymentChannel === id
+        ? { defaultPaymentChannel: 'unknown' }
+        : {}),
+    });
+    setNotice({ tone: 'success', message: '支付渠道已删除。' });
+  };
+
   const handleSaveKey = async () => {
     setSavingKey(true);
     setNotice(null);
@@ -383,6 +434,7 @@ export function SettingsScreen({
         todayLocal: new Date().toISOString().slice(0, 10),
         locale: settings.locale,
         defaultCurrency: settings.currency,
+        paymentChannels: settings.paymentChannels,
       });
       if (result.amountMinor !== 1230) {
         throw new Error('接口可以访问，但结构化结果不符合预期。请检查模型是否支持图片与 JSON。');
@@ -696,6 +748,62 @@ export function SettingsScreen({
           onChange={(value) => updateSettingSafely({ theme: value })}
           scrollable={false}
         />
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="支付渠道"
+          subtitle="识别和表单使用这里的渠道；可以添加个人常用渠道。"
+          theme={theme}
+        />
+        <FormField
+          theme={theme}
+          label="新增支付渠道"
+          value={newPaymentChannelLabel}
+          onChangeText={setNewPaymentChannelLabel}
+          placeholder="例如：京东支付、公司报销"
+          testID="settings-new-payment-channel"
+        />
+        <AppButton
+          label="添加渠道"
+          icon="add-circle-outline"
+          onPress={addPaymentChannel}
+          theme={theme}
+          variant="secondary"
+          compact
+        />
+        <View style={styles.channelList}>
+          {settings.paymentChannels.map((channel) => {
+            const builtIn = DEFAULT_PAYMENT_CHANNEL_DEFINITIONS.some(
+              (item) => item.id === channel.id,
+            );
+            return (
+              <View
+                key={channel.id}
+                style={[
+                  styles.channelRow,
+                  {
+                    borderBottomColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.channelName, { color: theme.colors.text }]}>
+                  {channel.label}
+                </Text>
+                {!builtIn ? (
+                  <AppButton
+                    label="删除"
+                    icon="trash-outline"
+                    onPress={() => removePaymentChannel(channel.id)}
+                    theme={theme}
+                    variant="quiet"
+                    compact
+                  />
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -1068,6 +1176,21 @@ const styles = StyleSheet.create({
   settingHint: {
     fontSize: typography.caption,
     lineHeight: 18,
+  },
+  channelList: {
+    gap: spacing.xs,
+  },
+  channelRow: {
+    minHeight: 44,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  channelName: {
+    flex: 1,
+    fontSize: typography.body,
   },
   dataPanel: {
     borderWidth: 1,

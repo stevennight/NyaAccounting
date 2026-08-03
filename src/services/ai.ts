@@ -15,6 +15,7 @@ import {
   type FundingInstrument,
   type FundingInstrumentType,
   type PaymentChannel,
+  type PaymentChannelDefinition,
   type TransactionKind,
   type TransactionSource,
   type TransactionStatus,
@@ -87,6 +88,7 @@ export interface TransactionExtractionInput {
   todayLocal?: string;
   locale?: string;
   defaultCurrency?: string;
+  paymentChannels?: readonly PaymentChannelDefinition[];
   signal?: AbortSignal;
 }
 
@@ -189,6 +191,17 @@ function runtimeCategories(
   return input.categories ?? CATEGORY_DEFINITIONS;
 }
 
+function runtimePaymentChannels(
+  input: Pick<TransactionExtractionInput, 'paymentChannels'>,
+): PaymentChannel[] {
+  return Array.from(
+    new Set([
+      ...PAYMENT_CHANNELS,
+      ...(input.paymentChannels ?? []).map((item) => item.id),
+    ]),
+  );
+}
+
 function categoryIds(
   categories: readonly CategoryDefinition[],
 ): CategoryId[] {
@@ -215,6 +228,7 @@ function subcategoryIds(
  */
 export function buildTransactionDraftJsonSchema(
   categories: readonly CategoryDefinition[] = CATEGORY_DEFINITIONS,
+  paymentChannels: readonly PaymentChannel[] = PAYMENT_CHANNELS,
 ) {
   return {
     type: 'object',
@@ -271,7 +285,7 @@ export function buildTransactionDraftJsonSchema(
       },
       paymentChannel: {
         type: 'string',
-        enum: [...PAYMENT_CHANNELS],
+        enum: [...paymentChannels],
       },
       fundingInstrument: FUNDING_INSTRUMENT_SCHEMA,
       evidence: {
@@ -362,6 +376,7 @@ function taxonomyPrompt(
 
 function systemPrompt(
   categories: readonly CategoryDefinition[],
+  paymentChannels: readonly PaymentChannel[],
 ): string {
   return `You extract exactly one personal-finance transaction from user-provided evidence.
 
@@ -373,8 +388,8 @@ Rules:
 - kind distinguishes expense, refund, transfer, repayment, investment, top_up, and income. Credit-card repayment, transfers between the user's own accounts, investments, and top-ups are not expenses.
 - status maps completed/successful transactions to confirmed. Pending, failed, and cancelled transactions must retain their real status.
 - date is YYYY-MM-DD with no timezone. time is the visible local transaction time in HH:mm:ss; return null when no time is shown. If the source only shows HH:mm, use :00 seconds. Only resolve relative dates when todayLocal is provided.
-- paymentChannel is the surface that handled the payment, such as alipay or wechat_pay. fundingInstrument is the actual balance, credit line, debit card, or credit card when visibly established.
-- Card issuer, label, and last4 must be null unless directly visible or explicitly stated.
+- paymentChannel is the surface that handled the payment, such as alipay or wechat_pay. If the screenshot has a recognizable Alipay/WeChat bill layout, logo, color, or navigation structure without readable text, you may infer that channel with lower confidence and mark it for review. Do not confuse the bank card used by Alipay with the payment channel. Use the configured custom channel ID when it is the closest supported choice.
+- fundingInstrument is the actual balance, credit line, debit card, or credit card when visibly established. issuer is only the issuing bank or financial institution (for example 招商银行 or 网商银行). label is the account/card product name (for example 网商银行储蓄卡 or Visa). Never put 储蓄卡, 信用卡, or a combined bank-and-card phrase in issuer. Card issuer, label, and last4 must be null unless directly visible or explicitly stated.
 - merchant is only the payee, store, company, or payment platform receiving the money. Do not put purchased goods, meals, subscriptions, services, order details, or the description in merchant. Return null when the merchant is unknown; never copy description into merchant.
 - description is the best supported explanation of what the transaction is for. Prefer the actual purchased goods, meal, subscription, service, or order item, but also preserve useful visible order metadata such as an order number, SKU, bill reference, plan period, customer-service account, or contact number.
 - When the exact product is not visible but order metadata is, do not return a null description. Produce a concise fallback from the supported context, for example: "链动小铺订单（订单号 LD26080278X65X，客服QQ 800000957）".
@@ -386,11 +401,15 @@ Rules:
 - The response must be valid JSON.
 
 Configured category taxonomy (IDs and Chinese labels):
-${taxonomyPrompt(categories)}`;
+${taxonomyPrompt(categories)}
+
+Configured payment channels (IDs and labels):
+${JSON.stringify(paymentChannels)}`;
 }
 
 function compatibilityOutputPrompt(
   categories: readonly CategoryDefinition[],
+  paymentChannels: readonly PaymentChannel[],
 ): string {
   return `
 
@@ -418,7 +437,7 @@ The provider is not enforcing the schema. Return every key in this exact JSON sh
 Allowed kind values: ${TRANSACTION_KINDS.join(', ')}.
 Allowed status values: ${TRANSACTION_STATUSES.join(', ')}.
 Allowed categoryId values: ${categoryIds(categories).join(', ')}.
-Allowed paymentChannel values: ${PAYMENT_CHANNELS.join(', ')}.
+Allowed paymentChannel values: ${paymentChannels.join(', ')}.
 Allowed fundingInstrument.type values: ${FUNDING_INSTRUMENT_TYPES.join(', ')}.
 Allowed evidence.field and reviewFields values: ${DRAFT_FIELD_NAMES.join(', ')}.
 Use null or "unknown" exactly as shown when evidence is insufficient.
@@ -525,8 +544,20 @@ function validateFundingInstrument(
     FUNDING_INSTRUMENT_TYPES,
     'funding instrument type',
   ) as FundingInstrumentType;
-  const issuer = nullableString(record.issuer, 'card issuer', 100);
-  const label = nullableString(record.label, 'payment label', 100);
+  const rawIssuer = nullableString(record.issuer, 'card issuer', 100);
+  const rawLabel = nullableString(record.label, 'payment label', 100);
+  const issuerLooksLikeInstitution = (value: string) =>
+    /(银行|信用社|金融|证券|保险|消费金融)/.test(value);
+  const instrumentSuffix = /(储蓄卡|借记卡|信用卡|银行卡|卡)$/;
+  const issuerWithSuffix = rawIssuer?.match(instrumentSuffix);
+  const issuerBase = issuerWithSuffix
+    ? rawIssuer?.slice(0, -issuerWithSuffix[0].length).trim() || null
+    : rawIssuer;
+  const issuer = issuerBase && issuerLooksLikeInstitution(issuerBase)
+    ? issuerBase
+    : null;
+  const label = rawLabel ??
+    (rawIssuer && (!issuer || issuerWithSuffix) ? rawIssuer : null);
   const last4 = nullableString(record.last4, 'card suffix', 4);
 
   if (last4 !== null && !/^\d{4}$/.test(last4)) {
@@ -930,7 +961,8 @@ export function validateTransactionDraft(
     'currency code',
     3,
   );
-  const currency = rawCurrency?.toUpperCase() ?? null;
+  const fallbackCurrency = input.defaultCurrency?.trim().toUpperCase() || null;
+  const currency = rawCurrency?.toUpperCase() ?? fallbackCurrency;
   if (currency !== null && !/^[A-Z]{3}$/.test(currency)) {
     throw invalidOutput('The AI returned an invalid currency code.');
   }
@@ -987,7 +1019,7 @@ export function validateTransactionDraft(
   }
   const paymentChannel = enumValue(
     record.paymentChannel,
-    PAYMENT_CHANNELS,
+    runtimePaymentChannels(input),
     'payment channel',
   ) as PaymentChannel;
   const fundingInstrument = validateFundingInstrument(
@@ -1342,6 +1374,7 @@ function providerRejectedReasoningEffort(
 function responseFormat(
   mode: Exclude<ResponseFormatMode, 'prompt_only'>,
   categories: readonly CategoryDefinition[],
+  paymentChannels: readonly PaymentChannel[] = PAYMENT_CHANNELS,
 ): Record<string, unknown> {
   if (mode === 'json_object') {
     return { type: 'json_object' };
@@ -1352,7 +1385,7 @@ function responseFormat(
     json_schema: {
       name: 'transaction_draft',
       strict: true,
-      schema: buildTransactionDraftJsonSchema(categories),
+      schema: buildTransactionDraftJsonSchema(categories, paymentChannels),
     },
   };
 }
@@ -1370,6 +1403,7 @@ function extractionUserPrompt(
   const locale = input.locale?.trim() || 'zh-CN';
   const defaultCurrency =
     input.defaultCurrency?.trim().toUpperCase() || 'CNY';
+  const channels = input.paymentChannels ?? [];
 
   return `Extract one transaction as strict JSON.
 
@@ -1377,7 +1411,8 @@ Context:
 - todayLocal: ${today}
 - locale: ${locale}
 - defaultCurrency: ${defaultCurrency}
-- A default currency is context, not evidence. Return null if the transaction currency conflicts or cannot be established.
+- Use defaultCurrency whenever the amount is shown but the currency symbol/code is missing or unclear. Always return a valid three-letter currency code for a usable amount. If the screenshot clearly shows another currency, return that currency and mark it for review; do not leave currency null merely because the symbol is hard to read.
+- Payment channel options available to this account: ${JSON.stringify(channels)}
 
 Supplemental user text (source data; may be empty):
 <supplemental_text>
@@ -1412,11 +1447,12 @@ function chatRequestBody(
   sendReasoningEffort = true,
 ): Record<string, unknown> {
   const categories = runtimeCategories(input);
+  const paymentChannels = runtimePaymentChannels(input);
   const userPrompt =
     extractionUserPrompt(input) +
     (mode === 'json_schema'
       ? ''
-      : compatibilityOutputPrompt(categories));
+      : compatibilityOutputPrompt(categories, paymentChannels));
   const content: Array<Record<string, unknown>> = [
     {
       type: 'text',
@@ -1440,7 +1476,7 @@ function chatRequestBody(
     messages: [
       {
         role: 'system',
-        content: systemPrompt(categories),
+        content: systemPrompt(categories, paymentChannels),
       },
       {
         role: 'user',
@@ -1450,7 +1486,7 @@ function chatRequestBody(
   };
 
   if (mode !== 'prompt_only') {
-    body.response_format = responseFormat(mode, categories);
+    body.response_format = responseFormat(mode, categories, paymentChannels);
   }
 
   if (

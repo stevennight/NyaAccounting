@@ -1,4 +1,12 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
+import {
+  LayoutChangeEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { AppTheme, radii, spacing, typography } from '../theme';
 
@@ -24,6 +32,24 @@ export function ChoiceChips<T extends string>({
   scrollable = true,
   testID,
 }: ChoiceChipsProps<T>) {
+  const scrollRef = useRef<ScrollView>(null);
+
+  const scrollSelectedIntoView = (
+    event: LayoutChangeEvent,
+    selected: boolean,
+  ) => {
+    if (!selected) {
+      return;
+    }
+    const { x } = event.nativeEvent.layout;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        x: Math.max(0, x - spacing.md),
+        animated: true,
+      });
+    });
+  };
+
   const content = (
     <View style={styles.row} testID={testID}>
       {options.map((option) => {
@@ -35,6 +61,9 @@ export function ChoiceChips<T extends string>({
             accessibilityState={{ checked: selected }}
             aria-checked={selected}
             onPress={() => onChange(option.value)}
+            onLayout={(event) =>
+              scrollSelectedIntoView(event, selected)
+            }
             style={({ pressed }) => [
               styles.chip,
               {
@@ -67,6 +96,7 @@ export function ChoiceChips<T extends string>({
 
   return (
     <ScrollView
+      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}

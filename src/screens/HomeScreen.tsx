@@ -276,6 +276,7 @@ export function HomeScreen({
                 key={transaction.id}
                 transaction={transaction}
                 categories={dataset.settings.categories}
+                paymentChannels={dataset.settings.paymentChannels}
                 theme={theme}
                 onPress={() => onOpenTransaction(transaction)}
               />

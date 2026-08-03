@@ -230,6 +230,7 @@ function AppContent() {
         locale={dataset.settings.locale}
         categories={dataset.settings.categories}
         recurringExpenses={dataset.recurringExpenses}
+        paymentChannels={dataset.settings.paymentChannels}
         onSave={saveTransaction}
         onDelete={deleteTransaction}
         onCancel={goBack}

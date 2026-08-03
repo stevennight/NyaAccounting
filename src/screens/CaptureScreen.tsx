@@ -34,7 +34,6 @@ import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
 import { VOICE_CAPTURE_ENABLED } from '../config/features';
 import {
-  PAYMENT_CHANNEL_LABELS,
   TRANSACTION_KIND_LABELS,
   TRANSACTION_STATUS_LABELS,
 } from '../domain/categories';
@@ -57,7 +56,6 @@ import {
 } from '../domain';
 import {
   FUNDING_INSTRUMENT_TYPES,
-  PAYMENT_CHANNELS,
   TRANSACTION_KINDS,
   TRANSACTION_STATUSES,
   type CategoryId,
@@ -71,6 +69,7 @@ import {
   type TransactionSource,
   type TransactionStatus,
 } from '../domain/types';
+import { paymentChannelOptions } from '../domain/paymentChannels';
 import {
   AiServiceError,
   createCapabilityAwareAiService,
@@ -144,12 +143,6 @@ const statusOptions: Array<ChoiceOption<TransactionStatus>> =
   TRANSACTION_STATUSES.map((value) => ({
     value,
     label: TRANSACTION_STATUS_LABELS[value],
-  }));
-
-const channelOptions: Array<ChoiceOption<PaymentChannel>> =
-  PAYMENT_CHANNELS.map((value) => ({
-    value,
-    label: PAYMENT_CHANNEL_LABELS[value],
   }));
 
 const fundingTypeLabels: Record<FundingInstrumentType, string> = {
@@ -418,6 +411,10 @@ export function CaptureScreen({
 }: CaptureScreenProps) {
   const { dataset, addTransaction } = useAppStore();
   const settings = dataset.settings;
+  const channelOptions = useMemo(
+    () => paymentChannelOptions(settings.paymentChannels),
+    [settings.paymentChannels],
+  );
   const [imageItems, setImageItems] = useState<CaptureImage[]>([]);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
@@ -1289,6 +1286,7 @@ export function CaptureScreen({
             todayLocal: formatLocalDate(new Date()),
             locale: settings.locale,
             defaultCurrency: settings.currency,
+            paymentChannels: settings.paymentChannels,
             signal: controller.signal,
           });
           if (
@@ -1483,6 +1481,7 @@ export function CaptureScreen({
         todayLocal: formatLocalDate(new Date()),
         locale: settings.locale,
         defaultCurrency: settings.currency,
+        paymentChannels: settings.paymentChannels,
         signal: controller.signal,
       });
       if (
@@ -2180,24 +2179,25 @@ export function CaptureScreen({
             <View style={styles.fieldHalf}>
               <FormField
                 theme={theme}
-                label="机构（可选）"
+                label="发卡机构（可选）"
                 value={funding.issuer ?? ''}
                 onChangeText={(value) =>
                   updateFundingInstrument({ issuer: value })
                 }
-                placeholder="例如：招商银行"
+                placeholder="仅填写银行或金融机构，例如：招商银行"
+                hint="机构只填银行/金融机构；卡类型写在卡/账户名称"
                 testID="capture-funding-issuer"
               />
             </View>
             <View style={styles.fieldHalf}>
               <FormField
                 theme={theme}
-                label="名称（可选）"
+                label="卡/账户名称（可选）"
                 value={funding.label ?? ''}
                 onChangeText={(value) =>
                   updateFundingInstrument({ label: value })
                 }
-                placeholder="例如：Visa"
+                placeholder="例如：网商银行储蓄卡、Visa"
                 testID="capture-funding-label"
               />
             </View>

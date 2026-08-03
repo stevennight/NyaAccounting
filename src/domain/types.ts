@@ -62,7 +62,13 @@ export const PAYMENT_CHANNELS = [
   'unknown',
 ] as const;
 
-export type PaymentChannel = (typeof PAYMENT_CHANNELS)[number];
+/** Built-in IDs remain stable; user-defined channels use their own IDs. */
+export type PaymentChannel = string;
+
+export interface PaymentChannelDefinition {
+  id: PaymentChannel;
+  label: string;
+}
 
 export const FUNDING_INSTRUMENT_TYPES = [
   'credit_card',
@@ -332,6 +338,7 @@ export interface AppSettings {
   budgetDangerRatio: number;
   defaultCategoryId: CategoryId;
   defaultPaymentChannel: PaymentChannel;
+  paymentChannels: PaymentChannelDefinition[];
   defaultFundingInstrument?: FundingInstrument;
   firstDayOfWeek: 0 | 1;
   theme: 'system' | 'light' | 'dark';

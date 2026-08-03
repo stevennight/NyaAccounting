@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 import {
   getCategoryDefinition,
-  PAYMENT_CHANNEL_LABELS,
   TRANSACTION_KIND_LABELS,
   TRANSACTION_STATUS_LABELS,
 } from '../domain/categories';
@@ -13,8 +12,10 @@ import { getTransactionLocalTime } from '../domain/transactions';
 import {
   CategoryDefinition,
   CategoryId,
+  PaymentChannelDefinition,
   Transaction,
 } from '../domain/types';
+import { paymentChannelLabel } from '../domain/paymentChannels';
 import { AppTheme, radii, spacing, typography } from '../theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -36,6 +37,7 @@ const categoryIcons: Partial<Record<CategoryId, IconName>> = {
 type TransactionRowProps = {
   transaction: Transaction;
   categories?: readonly CategoryDefinition[];
+  paymentChannels?: readonly PaymentChannelDefinition[];
   theme: AppTheme;
   onPress?: () => void;
 };
@@ -43,6 +45,7 @@ type TransactionRowProps = {
 export function TransactionRow({
   transaction,
   categories,
+  paymentChannels,
   theme,
   onPress,
 }: TransactionRowProps) {
@@ -70,7 +73,7 @@ export function TransactionRow({
   const meta = [
     transaction.description?.trim() ? merchant : null,
     category?.label ?? '其他',
-    PAYMENT_CHANNEL_LABELS[transaction.paymentChannel],
+    paymentChannelLabel(transaction.paymentChannel, paymentChannels),
     `${transaction.date.slice(5).replace('-', '/')}${
       transactionTime ? ` ${transactionTime}` : ''
     }`,

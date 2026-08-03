@@ -326,7 +326,7 @@ export function normalizePaymentChannel(
     CHANNEL_ALIASES[normalized] ??
     ((PAYMENT_CHANNELS as readonly string[]).includes(normalized)
       ? (normalized as PaymentChannel)
-      : null)
+      : normalized || null)
   );
 }
 
