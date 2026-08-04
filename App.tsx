@@ -3,7 +3,7 @@ import { useFonts } from 'expo-font';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AppState,
-  ActivityIndicator,
+  Image,
   StyleSheet,
   Text,
   useColorScheme,
@@ -184,10 +184,16 @@ function AppContent() {
         style={[styles.loading, { backgroundColor: theme.colors.background }]}
         testID="app-loading"
       >
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-        <Text style={[styles.loadingText, { color: theme.colors.textMuted }]}>
-          {hydrated ? '正在加载界面资源' : '正在打开本地账本'}
-        </Text>
+        <Image
+          source={require('./assets/android-icon-foreground.png')}
+          style={styles.loadingLogo}
+          resizeMode="contain"
+          accessibilityLabel="Nya 记账"
+        />
+        <Text style={[styles.loadingTitle, { color: theme.colors.text }]}>Nya 记账</Text>
+        <View style={[styles.loadingTrack, { backgroundColor: theme.colors.border }]}>
+          <View style={[styles.loadingTrackFill, { backgroundColor: theme.colors.primary }]} />
+        </View>
         <StatusBar style={theme.dark ? 'light' : 'dark'} />
       </View>
     );
@@ -199,9 +205,13 @@ function AppContent() {
         style={[styles.loading, { backgroundColor: theme.colors.background }]}
         testID="app-font-error"
       >
-        <Text style={[styles.loadingTitle, { color: theme.colors.text }]}>
-          界面资源加载失败
-        </Text>
+        <Image
+          source={require('./assets/android-icon-foreground.png')}
+          style={styles.loadingLogo}
+          resizeMode="contain"
+          accessibilityLabel="Nya 记账"
+        />
+        <Text style={[styles.loadingTitle, { color: theme.colors.text }]}>无法加载界面</Text>
         <Text style={[styles.loadingText, { color: theme.colors.textMuted }]}>
           请重新打开应用后再试。
         </Text>
@@ -330,14 +340,33 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+  },
+  loadingLogo: {
+    width: 96,
+    height: 96,
+    marginBottom: spacing.sm,
   },
   loadingText: {
     fontSize: typography.body,
-    fontWeight: '600',
+    lineHeight: 22,
+    textAlign: 'center',
   },
   loadingTitle: {
     fontSize: typography.sectionTitle,
     fontWeight: '700',
+  },
+  loadingTrack: {
+    width: 72,
+    height: 3,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginTop: spacing.sm,
+  },
+  loadingTrackFill: {
+    width: 32,
+    height: '100%',
+    borderRadius: 2,
   },
 });

@@ -111,8 +111,15 @@ type CaptureImage = {
 type ReviewQueueItem = {
   id: string;
   asset?: ImagePicker.ImagePickerAsset;
+  text?: string;
   draft: TransactionDraft | null;
   error?: string;
+};
+
+type RecognitionInput = {
+  id: string;
+  asset?: ImagePicker.ImagePickerAsset;
+  text: string;
 };
 
 type RecognitionProgress = {
@@ -422,6 +429,7 @@ export function CaptureScreen({
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [draft, setDraft] = useState<TransactionDraft | null>(null);
   const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([]);
+  const [retryQueue, setRetryQueue] = useState<ReviewQueueItem[]>([]);
   const [recognitionProgress, setRecognitionProgress] =
     useState<RecognitionProgress | null>(null);
   const [amountInput, setAmountInput] = useState('');
@@ -531,6 +539,7 @@ export function CaptureScreen({
       }
       setDraft(null);
       setReviewQueue([]);
+      setRetryQueue([]);
       setRecognitionProgress(null);
       setAmountInput('');
       setTimeInput('');
@@ -792,6 +801,7 @@ export function CaptureScreen({
   const returnToInput = useCallback(() => {
     setDraft(null);
     setReviewQueue([]);
+    setRetryQueue([]);
     setRecognitionProgress(null);
     setDuplicateCandidates([]);
     setNotice(null);
@@ -888,19 +898,45 @@ export function CaptureScreen({
   const activateReviewQueueItem = useCallback(
     (item: ReviewQueueItem) => {
       setDuplicateCandidates([]);
+      if (item.asset) {
+        setActiveImageId(item.id);
+      }
       if (item.draft) {
         beginReview(item.draft);
         return;
       }
-      setDraft(null);
-      setAmountInput('');
-      setTimeInput('');
+      const manualDescription = item.text?.trim() || undefined;
+      const manualDraft = normalizeTransactionDraft(
+        {
+          kind: 'expense',
+          status: 'confirmed',
+          amountMinor: null,
+          currency: settings.currency,
+          date: formatLocalDate(new Date()),
+          merchant: '',
+          categoryId: settings.defaultCategoryId,
+          paymentChannel: settings.defaultPaymentChannel,
+          fundingInstrument: settings.defaultFundingInstrument,
+          ...(manualDescription ? { description: manualDescription } : {}),
+          source: 'manual',
+        },
+        {
+          defaultCurrency: settings.currency,
+          defaultDate: formatLocalDate(new Date()),
+          defaultCategoryId: settings.defaultCategoryId,
+          defaultStatus: 'confirmed',
+          defaultPaymentChannel: settings.defaultPaymentChannel,
+          categories: settings.categories,
+          source: 'manual',
+        },
+      );
+      beginReview(manualDraft);
       setNotice({
         tone: 'warning',
-        message: item.error ?? '这笔截图识别失败，可以重试。',
+        message: item.error ?? '识别失败，请手动填写或选择后续操作。',
       });
     },
-    [beginReview],
+    [beginReview, settings],
   );
 
   const configuredAiService = useCallback(async () => {
@@ -967,7 +1003,13 @@ export function CaptureScreen({
     cancelExtraction();
     setImageItems((current) => {
       const targetId = imageId ?? activeImageId ?? current[0]?.id;
+      if (!targetId) {
+        return current;
+      }
       const targetIndex = current.findIndex((item) => item.id === targetId);
+      if (targetIndex < 0) {
+        return current;
+      }
       const next = current.filter((item) => item.id !== targetId);
       setActiveImageId((selected) => {
         if (selected !== targetId) {
@@ -977,8 +1019,10 @@ export function CaptureScreen({
       });
       return next;
     });
+    setNotice({ tone: 'success', message: '已移除这张截图。' });
     setDraft(null);
     setReviewQueue([]);
+    setRetryQueue([]);
     setRecognitionProgress(null);
     setDuplicateCandidates([]);
   }, [activeImageId, cancelExtraction]);
@@ -1149,12 +1193,24 @@ export function CaptureScreen({
     setVoiceCaptureSafely,
   ]);
 
-  const recognize = useCallback(async () => {
-    if (!canRecognize) {
+  const recognize = useCallback(async (requestedItems?: readonly RecognitionInput[]) => {
+    const inputs: RecognitionInput[] = requestedItems
+      ? [...requestedItems]
+      : imageItems.length > 0
+        ? imageItems
+        : [{ id: 'text-input', asset: undefined, text: textInput }];
+    const canRecognizeRequested = Boolean(
+      inputs.some(
+        (item) =>
+          (Boolean(item.asset) && settings.ai.sendImages) ||
+          Boolean(item.text.trim()),
+      ) || hasVoiceInput,
+    );
+    if (!canRecognizeRequested || (!requestedItems && !canRecognize)) {
       setNotice({
         tone: 'warning',
         message:
-          imageItems.length > 0 && !settings.ai.sendImages
+          inputs.some((item) => item.asset) && !settings.ai.sendImages
             ? '当前设置不发送截图，请补充文字或在设置中开启“发送截图”。'
             : `请先添加${CAPTURE_INPUT_LABEL}。`,
       });
@@ -1166,7 +1222,7 @@ export function CaptureScreen({
     extractionAbortRef.current = controller;
     setRecognizing(true);
     setRecognitionProgress({
-      total: Math.max(1, imageItems.length),
+      total: Math.max(1, inputs.length),
       current: 1,
       completed: 0,
       succeeded: 0,
@@ -1215,9 +1271,6 @@ export function CaptureScreen({
       ) {
         throw cancelledRequestError();
       }
-      const inputs = imageItems.length > 0
-        ? imageItems
-        : [{ id: 'text-input', asset: undefined, text: textInput }];
       const reviewItems: ReviewQueueItem[] = [];
       const failedReviewItems: ReviewQueueItem[] = [];
       const failedItems: string[] = [];
@@ -1316,6 +1369,7 @@ export function CaptureScreen({
           reviewItems.push({
             id: item.id,
             asset: item.asset,
+            text: item.text,
             draft: normalized,
           });
           setRecognitionProgress((current) =>
@@ -1343,6 +1397,7 @@ export function CaptureScreen({
           failedReviewItems.push({
             id: item.id,
             asset: item.asset,
+            text: item.text,
             draft: null,
             error: message,
           });
@@ -1374,17 +1429,13 @@ export function CaptureScreen({
           : current,
       );
       setReviewQueue(nextReviewQueue);
-      if (nextReviewQueue[0].draft) {
-        beginReview(nextReviewQueue[0].draft);
-      } else {
-        setDraft(null);
-        setAmountInput('');
-        setTimeInput('');
-        setDuplicateCandidates([]);
+      if (!requestedItems) {
+        setRetryQueue([]);
       }
+      activateReviewQueueItem(nextReviewQueue[0]);
       const recognitionWarnings = [
-        imageItems.length > 1
-          ? `已完成 ${reviewItems.length}/${imageItems.length} 张截图识别，失败项已放到最后。`
+        inputs.length > 1
+          ? `已完成 ${reviewItems.length}/${inputs.length} 张截图识别，失败项已放到最后。`
           : null,
         partialInputWarning,
         ...compatibilityWarnings,
@@ -1418,6 +1469,7 @@ export function CaptureScreen({
       }
     }
   }, [
+    activateReviewQueueItem,
     beginReview,
     configuredAiService,
     canRecognize,
@@ -1428,153 +1480,13 @@ export function CaptureScreen({
     settings.defaultCategoryId,
     settings.defaultPaymentChannel,
     settings.locale,
+    hasVoiceInput,
     textInput,
     transcribeVoice,
     voiceCapture,
     voiceTranscript,
+    settings.paymentChannels,
   ]);
-
-  const retryCurrentRecognition = useCallback(async () => {
-    const item = reviewQueue[0];
-    if (!item || item.draft) {
-      return;
-    }
-    extractionAbortRef.current?.abort();
-    const controller = new AbortController();
-    extractionAbortRef.current = controller;
-    setRecognizing(true);
-    setRecognitionProgress({
-      total: 1,
-      current: 1,
-      completed: 0,
-      succeeded: 0,
-      failed: 0,
-    });
-    setNotice(null);
-    let screenshot: Awaited<ReturnType<typeof prepareScreenshot>> | null = null;
-    try {
-      const service = await configuredAiService();
-      const sourceInput = imageItems.find((candidate) => candidate.id === item.id);
-      const supplementalText = sourceInput?.text.trim() ?? textInput.trim();
-      const transcript = VOICE_CAPTURE_ENABLED ? voiceTranscript.trim() : '';
-      if (item.asset && settings.ai.sendImages) {
-        screenshot = await prepareScreenshot(item.asset.uri);
-      }
-      const sendsImage = Boolean(item.asset && settings.ai.sendImages);
-      const sendsText = Boolean(supplementalText);
-      const sendsVoice = VOICE_CAPTURE_ENABLED && Boolean(transcript);
-      if (!sendsImage && !sendsText && !sendsVoice) {
-        throw new Error('当前设置不会发送截图，请补充文字或在设置中开启“发送截图”。');
-      }
-      const source = captureSource(sendsImage, sendsText, sendsVoice);
-      const sourceFingerprint = createSourceFingerprint({
-        screenshot: sendsImage ? screenshot ?? undefined : undefined,
-        imageAsset: sendsImage ? item.asset : undefined,
-        text: supplementalText,
-        transcript,
-      });
-      const extracted = await service.extractTransaction({
-        screenshot: sendsImage ? screenshot ?? undefined : undefined,
-        text: supplementalText || undefined,
-        voiceTranscript: transcript || undefined,
-        categories: settings.categories,
-        todayLocal: formatLocalDate(new Date()),
-        locale: settings.locale,
-        defaultCurrency: settings.currency,
-        paymentChannels: settings.paymentChannels,
-        signal: controller.signal,
-      });
-      if (
-        controller.signal.aborted ||
-        extractionAbortRef.current !== controller ||
-        !mountedRef.current ||
-        leavingRef.current
-      ) {
-        throw cancelledRequestError();
-      }
-      const normalized = normalizeTransactionDraft(
-        {
-          ...extracted,
-          source,
-          sourceFingerprint,
-        },
-        {
-          defaultCurrency: settings.currency,
-          defaultDate: formatLocalDate(new Date()),
-          defaultCategoryId: settings.defaultCategoryId,
-          defaultStatus: 'confirmed',
-          defaultPaymentChannel: settings.defaultPaymentChannel,
-          categories: settings.categories,
-          source,
-        },
-      );
-      const updatedItem = { ...item, draft: normalized, error: undefined };
-      setRecognitionProgress((current) =>
-        current
-          ? { ...current, completed: 1, succeeded: 1 }
-          : current,
-      );
-      setReviewQueue((current) =>
-        current[0]?.id === item.id ? [updatedItem, ...current.slice(1)] : current,
-      );
-      activateReviewQueueItem(updatedItem);
-      setNotice({
-        tone: 'success',
-        message: '已重试识别，请核对这笔账目。',
-      });
-    } catch (error) {
-      if (!isCancellationError(error) && mountedRef.current && !leavingRef.current) {
-        const message = userFacingError(error);
-        setReviewQueue((current) =>
-          current[0]?.id === item.id
-            ? [{ ...current[0], error: `重试失败：${message}` }, ...current.slice(1)]
-            : current,
-        );
-        setRecognitionProgress((current) =>
-          current
-            ? { ...current, completed: 1, failed: 1 }
-            : current,
-        );
-        setNotice({ tone: 'danger', message: `重试失败：${message}` });
-      }
-    } finally {
-      deleteTemporaryUri(screenshot?.uri);
-      if (extractionAbortRef.current === controller) {
-        extractionAbortRef.current = null;
-        if (mountedRef.current && !leavingRef.current) {
-          setRecognizing(false);
-          setRecognitionProgress(null);
-        }
-      }
-    }
-  }, [
-    activateReviewQueueItem,
-    configuredAiService,
-    imageItems,
-    reviewQueue,
-    settings.ai.sendImages,
-    settings.categories,
-    settings.currency,
-    settings.defaultCategoryId,
-    settings.defaultPaymentChannel,
-    settings.locale,
-    textInput,
-    voiceTranscript,
-  ]);
-
-  const skipFailedReviewItem = useCallback(() => {
-    if (!reviewQueue[0] || reviewQueue[0].draft) {
-      return;
-    }
-    const remaining = reviewQueue.slice(1);
-    setReviewQueue(remaining);
-    if (remaining[0]) {
-      activateReviewQueueItem(remaining[0]);
-      return;
-    }
-    setDraft(null);
-    setNotice({ tone: 'warning', message: '已跳过失败项，可以返回输入页重新选择。' });
-  }, [activateReviewQueueItem, reviewQueue]);
 
   const beginManualEntry = useCallback(() => {
     cancelExtraction();
@@ -1679,11 +1591,85 @@ export function CaptureScreen({
     setVoiceTranscript('');
     setDraft(null);
     setReviewQueue([]);
+    setRetryQueue([]);
     setRecognitionProgress(null);
     setAmountInput('');
     setTimeInput('');
     setDuplicateCandidates([]);
   }, [setVoiceCaptureSafely]);
+
+  const reviewItemToRecognitionInput = useCallback(
+    (item: ReviewQueueItem): RecognitionInput => {
+      const sourceInput = imageItems.find((candidate) => candidate.id === item.id);
+      return {
+        id: item.id,
+        asset: item.asset ?? sourceInput?.asset,
+        text: item.text ?? sourceInput?.text ?? (item.id === 'text-input' ? textInput : ''),
+      };
+    },
+    [imageItems, textInput],
+  );
+
+  const runRetryRecognition = useCallback(
+    async (items: readonly ReviewQueueItem[]) => {
+      if (items.length === 0) {
+        return;
+      }
+      setRetryQueue([]);
+      setReviewQueue([]);
+      setDraft(null);
+      setNotice({ tone: 'info', message: '正在重新识别待重试账目。' });
+      await recognize(items.map(reviewItemToRecognitionInput));
+    },
+    [recognize, reviewItemToRecognitionInput],
+  );
+
+  const advanceAfterReviewAction = useCallback(
+    (nextRetryQueue: ReviewQueueItem[], message: string) => {
+      const remainingQueue = reviewQueue.slice(1);
+      setRetryQueue(nextRetryQueue);
+      if (remainingQueue.length > 0) {
+        setReviewQueue(remainingQueue);
+        activateReviewQueueItem(remainingQueue[0]);
+        scrollCaptureToTop();
+        setNotice({ tone: 'success', message });
+        return;
+      }
+      if (nextRetryQueue.length > 0) {
+        void runRetryRecognition(nextRetryQueue);
+        return;
+      }
+      resetAfterSave();
+      setNotice({ tone: 'success', message });
+    },
+    [
+      activateReviewQueueItem,
+      resetAfterSave,
+      reviewQueue,
+      runRetryRecognition,
+      scrollCaptureToTop,
+    ],
+  );
+
+  const discardCurrentReview = useCallback(() => {
+    if (!reviewQueue[0]) {
+      resetAfterSave();
+      setNotice({ tone: 'success', message: '已舍弃当前账目。' });
+      return;
+    }
+    advanceAfterReviewAction(retryQueue, '已舍弃当前账目。');
+  }, [advanceAfterReviewAction, resetAfterSave, retryQueue, reviewQueue]);
+
+  const queueCurrentForRetry = useCallback(() => {
+    const current = reviewQueue[0];
+    if (!current) {
+      return;
+    }
+    advanceAfterReviewAction(
+      [...retryQueue, current],
+      '已加入重新识别列表。',
+    );
+  }, [advanceAfterReviewAction, retryQueue, reviewQueue]);
 
   const saveDraft = useCallback(
     async (allowDuplicate = false) => {
@@ -1750,6 +1736,13 @@ export function CaptureScreen({
           }
           return;
         }
+        if (retryQueue.length > 0) {
+          setReviewQueue([]);
+          setDraft(null);
+          await runRetryRecognition(retryQueue);
+          scrollCaptureToTop();
+          return;
+        }
         resetAfterSave();
         if (mountedRef.current && !leavingRef.current) {
           setNotice({ tone: 'success', message: '账目已保存。' });
@@ -1797,6 +1790,8 @@ export function CaptureScreen({
       merchantError,
       onSaved,
       resetAfterSave,
+      retryQueue,
+      runRetryRecognition,
       reviewQueue,
       scrollCaptureToTop,
       settings.categories,
@@ -1854,104 +1849,20 @@ export function CaptureScreen({
     </Modal>
   );
 
-  const failedReviewItem = reviewQueue[0];
-  if (failedReviewItem && !failedReviewItem.draft) {
-    const failedAsset = failedReviewItem.asset;
-    const failedIndex = Math.max(
-      1,
-      imageItems.findIndex((item) => item.id === failedReviewItem.id) + 1,
-    );
-    const totalReviewItems = Math.max(imageItems.length, reviewQueue.length);
-    return (
-      <Screen
-        theme={theme}
-        bottomNavigation={false}
-        scrollRef={scrollRef}
-        testID="capture-failed-review-screen"
-      >
-        <PageHeader
-          theme={theme}
-          title="识别失败"
-          subtitle={`第 ${failedIndex}/${totalReviewItems} 笔待处理`}
-          onBack={returnToInput}
-          backLabel="返回录入"
-          backDisabled={recognizing}
-        />
-        <View style={styles.section}>
-          <InlineNotice
-            theme={theme}
-            tone={notice?.tone ?? 'warning'}
-            message={notice?.message ?? failedReviewItem.error ?? '这笔截图识别失败，请重试。'}
-          />
-          {failedAsset ? (
-            <Pressable
-              onPress={() => openFullscreenImage(failedAsset.uri)}
-              accessibilityRole="button"
-              accessibilityLabel="全屏查看识别失败的消费截图"
-              style={styles.reviewPreviewTap}
-            >
-              <Image
-                source={{ uri: failedAsset.uri }}
-                resizeMode="contain"
-                style={[
-                  styles.reviewPreview,
-                  { backgroundColor: theme.colors.surfaceMuted },
-                ]}
-                accessibilityLabel="识别失败的消费截图"
-                testID="capture-failed-screenshot"
-              />
-            </Pressable>
-          ) : null}
-          {recognizing && recognitionProgress ? (
-            <RecognitionProgressPanel
-              theme={theme}
-              progress={recognitionProgress}
-            />
-          ) : null}
-          <Text style={[styles.help, { color: theme.colors.textMuted }]}>
-            失败项已经放到成功账目之后。重试只会重新识别当前这一张。
-          </Text>
-          <View style={styles.footerActions}>
-            <AppButton
-              theme={theme}
-              label="重试当前识别"
-              icon="refresh"
-              onPress={() => void retryCurrentRecognition()}
-              loading={recognizing}
-              testID="capture-retry"
-            />
-            <AppButton
-              theme={theme}
-              label="跳过此项"
-              icon="play-skip-forward-outline"
-              onPress={skipFailedReviewItem}
-              disabled={recognizing}
-              variant="secondary"
-              testID="capture-skip-failed"
-            />
-            <AppButton
-              theme={theme}
-              label="返回输入"
-              icon="arrow-back"
-              onPress={returnToInput}
-              disabled={recognizing}
-              variant="quiet"
-            />
-          </View>
-          {fullscreenImagePreview}
-        </View>
-      </Screen>
-    );
-  }
-
   if (draft) {
     const reviewFields = Array.from(new Set(draft.review.fields))
       .map((field) => draftFieldLabels[field])
       .filter(Boolean);
     const funding = draft.fundingInstrument ?? { type: 'unknown' as const };
     const reviewAsset = reviewQueue[0]?.asset ?? activeImage?.asset;
+    const reviewIndex = reviewQueue[0]
+      ? imageItems.findIndex((item) => item.id === reviewQueue[0]?.id)
+      : -1;
     const reviewPosition = reviewQueue.length > 0
-      ? `第 ${imageItems.length - reviewQueue.length + 1}/${imageItems.length} 笔`
+      ? `第 ${reviewIndex >= 0 ? reviewIndex + 1 : 1}/${Math.max(
+          imageItems.length,
+          reviewQueue.length,
+        )} 笔`
       : null;
 
     return (
@@ -1966,8 +1877,8 @@ export function CaptureScreen({
           theme={theme}
           title="确认账目"
           subtitle={reviewPosition ?? '保存前核对识别结果'}
-          onBack={returnToInput}
-          backLabel="返回录入"
+          onBack={requestCancel}
+          backLabel="放弃本次录入"
           backDisabled={saving}
         />
 
@@ -2316,23 +2227,40 @@ export function CaptureScreen({
         />
 
         <View style={styles.footerActions}>
+          <AppButton
+            theme={theme}
+            label="舍弃此笔"
+            icon="trash-outline"
+            onPress={discardCurrentReview}
+            disabled={saving || recognizing}
+            variant="quiet"
+            testID="capture-discard"
+          />
+          <AppButton
+            theme={theme}
+            label="加入重新识别"
+            icon="refresh-outline"
+            onPress={queueCurrentForRetry}
+            disabled={saving || recognizing || !reviewQueue[0]}
+            variant="secondary"
+            testID="capture-queue-retry"
+          />
           {duplicateCandidates.length === 0 ? (
             <AppButton
               theme={theme}
-              label={reviewQueue.length > 1 ? '保存并核对下一笔' : '确认保存'}
+              label={
+                reviewQueue.length > 1
+                  ? '保存并核对下一笔'
+                  : retryQueue.length > 0
+                    ? '保存并重新识别'
+                    : '确认保存'
+              }
               icon="checkmark-circle-outline"
               onPress={() => void saveDraft(false)}
               loading={saving}
               testID="capture-save"
             />
           ) : null}
-          <AppButton
-            theme={theme}
-            label="返回输入"
-            icon="arrow-back"
-            onPress={returnToInput}
-            variant="secondary"
-          />
         </View>
         {fullscreenImagePreview}
       </Screen>
@@ -2406,8 +2334,14 @@ export function CaptureScreen({
                 <IconButton
                   theme={theme}
                   icon="trash-outline"
-                  label="移除当前截图"
-                  onPress={removeImage}
+                  label={
+                    activeImage
+                      ? `删除第 ${activeImageIndex + 1} 张截图`
+                      : '删除截图'
+                  }
+                  onPress={() => removeImage(activeImage?.id)}
+                  disabled={!activeImage}
+                  testID="capture-remove-image"
                 />
               ) : undefined
             }
