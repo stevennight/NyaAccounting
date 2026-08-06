@@ -40,6 +40,7 @@
     "test": "tsc -p tests/tsconfig.domain.json && node --test tests/domain.test.cjs tests/ai-service.test.cjs tests/update-manifest.test.cjs",
     "check": "npm run typecheck && npm test",
     "build:web": "expo export --platform web",
+    "android:keystore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/new-android-keystore.ps1",
     "version:check": "node scripts/version.mjs check",
     "version:set": "node scripts/version.mjs set"
   },
