@@ -26,10 +26,16 @@ import { RecurringExpensesScreen } from './src/screens/RecurringExpensesScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
 import { TransactionEditScreen } from './src/screens/TransactionEditScreen';
+import { UpdateBanner } from './src/components/UpdateBanner';
 import {
+  applyExpoUpdate,
+  checkForAppUpdates,
   consumePendingScreenCaptures,
   consumePendingScreenCaptureError,
+  downloadAndInstallGitHubApk,
+  isGitHubReleaseNewer,
 } from './src/services';
+import type { AppUpdateCheckResult } from './src/services';
 import { useHardwareBack } from './src/hooks/useHardwareBack';
 import {
   AppStoreProvider,
@@ -57,6 +63,11 @@ function AppContent() {
   ]);
   const [pendingScreenshotUris, setPendingScreenshotUris] = useState<string[]>([]);
   const [pendingScreenshotError, setPendingScreenshotError] = useState<string | null>(null);
+  const [updateCheck, setUpdateCheck] = useState<AppUpdateCheckResult | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [applyingOta, setApplyingOta] = useState(false);
   const clearPendingScreenshot = useCallback(() => {
     setPendingScreenshotUris([]);
     setPendingScreenshotError(null);
@@ -87,6 +98,36 @@ function AppContent() {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void consumePendingCapture();
+      }
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    let active = true;
+    const checkUpdates = () =>
+      checkForAppUpdates()
+        .then((result) => {
+          if (active) {
+            setUpdateCheck(result);
+            setUpdateError(null);
+          }
+        })
+        .catch((error: unknown) => {
+          if (active) {
+            setUpdateError(error instanceof Error ? error.message : '更新检查失败。');
+          }
+        });
+    void checkUpdates();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void checkUpdates();
       }
     });
     return () => {
@@ -177,6 +218,46 @@ function AppContent() {
     await removeTransaction(id);
     goBack();
   };
+
+  const handleDownloadUpdate = async () => {
+    const release = updateCheck?.githubRelease;
+    if (!release) {
+      return;
+    }
+    setDownloadingUpdate(true);
+    setUpdateError(null);
+    try {
+      await downloadAndInstallGitHubApk(release);
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : '更新下载失败。');
+    } finally {
+      setDownloadingUpdate(false);
+    }
+  };
+
+  const handleApplyOta = async () => {
+    setApplyingOta(true);
+    setUpdateError(null);
+    try {
+      const applied = await applyExpoUpdate();
+      if (!applied) {
+        setUpdateCheck((current) =>
+          current ? { ...current, otaAvailable: false } : current,
+        );
+      }
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : '代码更新应用失败。');
+    } finally {
+      setApplyingOta(false);
+    }
+  };
+
+  const hasGitHubUpdate = isGitHubReleaseNewer(
+    updateCheck?.githubRelease ?? null,
+    updateCheck?.currentVersion,
+  );
+  const shouldShowUpdate =
+    !updateDismissed && (hasGitHubUpdate || Boolean(updateCheck?.otaAvailable));
 
   if (!hydrated || (!iconsLoaded && !iconFontError)) {
     return (
@@ -309,6 +390,19 @@ function AppContent() {
 
   return (
     <View style={[styles.app, { backgroundColor: theme.colors.background }]}>
+      {shouldShowUpdate ? (
+        <UpdateBanner
+          theme={theme}
+          release={hasGitHubUpdate ? updateCheck?.githubRelease ?? null : null}
+          otaAvailable={Boolean(updateCheck?.otaAvailable)}
+          downloading={downloadingUpdate}
+          applyingOta={applyingOta}
+          error={updateError}
+          onDownload={() => void handleDownloadUpdate()}
+          onApplyOta={() => void handleApplyOta()}
+          onDismiss={() => setUpdateDismissed(true)}
+        />
+      ) : null}
       {content}
       {currentRoute.type === 'tab' ? (
         <BottomNav

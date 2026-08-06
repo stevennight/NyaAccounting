@@ -4,6 +4,14 @@
     "slug": "nya-accounting",
     "scheme": "nyaaccounting",
     "version": "1.0.0",
+    "extra": {
+      "githubRepository": null
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -11,12 +19,17 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.nya.accounting",
+      "buildNumber": "1000000",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "用于选择消费截图并生成记账草稿。"
       }
     },
     "android": {
       "package": "app.nya.accounting",
+      "versionCode": 1000000,
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E9EFEA",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -53,7 +66,8 @@
         }
       ],
       "expo-sharing",
-      "expo-asset"
+      "expo-asset",
+      "expo-updates"
     ]
   }
 }

@@ -4,7 +4,7 @@
     "module": "Node16",
     "moduleResolution": "Node16",
     "rootDir": "../src",
-    "outDir": "../.test-build",
+    "outDir": "../.test-build-tests",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,6 +14,7 @@
   },
   "include": [
     "../src/domain/**/*.ts",
+    "../src/services/updateManifest.ts",
     "../src/services/ai.ts",
     "../src/services/aiCapabilities.ts",
     "../src/services/media.ts"

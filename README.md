@@ -44,6 +44,24 @@ npm run check
 npm run build:web
 ```
 
+## 版本与发布
+
+`VERSION` 是唯一版本来源。修改版本时同步更新 npm、Expo、Android `versionCode` 和 iOS `buildNumber`：
+
+```powershell
+npm run version:set -- 1.0.1
+npm run version:check
+```
+
+提交后推送匹配的 tag（例如 `v1.0.1`）会触发 `.github/workflows/release.yml`，生成签名 APK 并发布 GitHub Release。发布工作流需要配置以下 GitHub Actions secrets，且必须长期使用同一份 keystore，否则已安装版本无法覆盖更新：
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+GitHub Actions 会把当前仓库名注入安装包，应用因此检查该仓库的最新 Release；本地构建可设置 `NYA_ACCOUNTING_GITHUB_REPOSITORY=owner/repository` 来启用同样的检查。Android 用户点击更新后会下载 APK 并打开系统安装器，首次使用可能需要允许 Nya 记账安装未知来源应用。Expo Updates 入口用于已配置更新服务的原生包，不能替代包含原生模块变更的 APK 发布。
+
 ## AI 配置
 
 在应用的“设置”中填写：

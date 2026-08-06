@@ -36,6 +36,11 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 .test-build/
+.test-build-tests/
+
+# local release artifacts
+/releases/
+/.codex-remote-attachments/
 
 # generated native folders
 /ios

@@ -53,13 +53,13 @@ const {
   AiServiceError,
   createAiService,
   validateTransactionDraft,
-} = require('../.test-build/services/ai.js');
+} = require('../.test-build-tests/services/ai.js');
 const {
   createCapabilityAwareAiService,
   getReasoningEffortSupport,
   REASONING_CAPABILITY_TTL_MS,
   setReasoningEffortSupport,
-} = require('../.test-build/services/aiCapabilities.js');
+} = require('../.test-build-tests/services/aiCapabilities.js');
 
 after(() => {
   Module._load = originalModuleLoad;

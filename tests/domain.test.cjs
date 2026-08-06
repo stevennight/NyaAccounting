@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { describe, test } = require('node:test');
 
-const domain = require('../.test-build/domain/index.js');
+const domain = require('../.test-build-tests/domain/index.js');
 
 const REFERENCE_DATE = '2026-07-27';
 const REFERENCE_MONTH = '2026-07';

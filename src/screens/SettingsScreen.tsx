@@ -14,8 +14,11 @@ import { majorToMinor, minorToMajor } from '../domain/money';
 import type { AiReasoningEffort } from '../domain/types';
 import {
   API_KEY_STORAGE,
+  applyExpoUpdate,
+  checkForAppUpdates,
   createCapabilityAwareAiService,
   deleteApiKey,
+  downloadAndInstallGitHubApk,
   exportDatasetBackup,
   getApiKey,
   getReasoningEffortSupport,
@@ -23,16 +26,20 @@ import {
   saveApiKey,
   type ReasoningEffortSupport,
   isCurrentScreenCaptureEnabled,
+  isGitHubReleaseNewer,
   openCurrentScreenCaptureSettings,
   showCurrentScreenCaptureNotification,
   hideCurrentScreenCaptureNotification,
   isScreenCaptureOverlayPermissionGranted,
   openScreenCaptureOverlaySettings,
+  openGitHubReleasePage,
   isScreenCaptureOverlayRunning,
   startScreenCaptureOverlay,
   stopScreenCaptureOverlay,
   getPendingScreenCaptureCount,
+  CURRENT_APP_VERSION,
 } from '../services';
+import type { AppUpdateCheckResult } from '../services';
 import { DEFAULT_PAYMENT_CHANNEL_DEFINITIONS } from '../domain/paymentChannels';
 import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
@@ -166,6 +173,10 @@ export function SettingsScreen({
   const [savingSettings, setSavingSettings] = useState(false);
   const [testing, setTesting] = useState(false);
   const [dataAction, setDataAction] = useState<DataAction | null>(null);
+  const [updateCheck, setUpdateCheck] = useState<AppUpdateCheckResult | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [applyingOta, setApplyingOta] = useState(false);
   const [notice, setNotice] = useState<{
     tone: 'info' | 'success' | 'warning' | 'danger';
     message: string;
@@ -687,6 +698,86 @@ export function SettingsScreen({
     }
   };
 
+  const handleCheckUpdates = async () => {
+    setCheckingUpdates(true);
+    setNotice(null);
+    try {
+      const result = await checkForAppUpdates();
+      setUpdateCheck(result);
+      if (isGitHubReleaseNewer(result.githubRelease, result.currentVersion)) {
+        setNotice({
+          tone: 'info',
+          message: result.githubRelease?.apkAsset
+            ? `发现 v${result.githubRelease.version}，可以下载 APK 更新。`
+            : `发现 v${result.githubRelease?.version}，但这个 Release 尚未提供 APK。`,
+        });
+      } else if (result.otaAvailable) {
+        setNotice({ tone: 'info', message: '发现可应用的代码更新。' });
+      } else if (result.githubError) {
+        setNotice({ tone: 'warning', message: result.githubError });
+      } else if (!result.repository) {
+        setNotice({
+          tone: 'warning',
+          message: '未配置 GitHub 仓库，GitHub 更新检查未启用。',
+        });
+      } else {
+        setNotice({ tone: 'success', message: '当前已经是最新版本。' });
+      }
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '更新检查失败。',
+      });
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    if (!updateCheck?.githubRelease) {
+      return;
+    }
+    setDownloadingUpdate(true);
+    setNotice(null);
+    try {
+      await downloadAndInstallGitHubApk(updateCheck.githubRelease);
+      if (Platform.OS !== 'android') {
+        setNotice({ tone: 'success', message: '已打开 GitHub Release 页面。' });
+      }
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '更新下载失败。',
+      });
+    } finally {
+      setDownloadingUpdate(false);
+    }
+  };
+
+  const handleApplyOta = async () => {
+    setApplyingOta(true);
+    setNotice(null);
+    try {
+      const applied = await applyExpoUpdate();
+      setNotice({
+        tone: applied ? 'success' : 'info',
+        message: applied ? '代码更新已应用。' : '没有可应用的代码更新。',
+      });
+      if (!applied) {
+        setUpdateCheck((current) =>
+          current ? { ...current, otaAvailable: false } : current,
+        );
+      }
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '代码更新应用失败。',
+      });
+    } finally {
+      setApplyingOta(false);
+    }
+  };
+
   const confirmClear = () => {
     const run = () => {
       clearAll()
@@ -717,6 +808,31 @@ export function SettingsScreen({
       ],
     );
   };
+
+  const hasBinaryUpdate = isGitHubReleaseNewer(
+    updateCheck?.githubRelease ?? null,
+    updateCheck?.currentVersion,
+  );
+  const updateStatusMessage = !updateCheck
+    ? '启动后会检查 GitHub Release 和 Expo Updates。'
+    : updateCheck.githubError
+      ? updateCheck.githubError
+      : !updateCheck.repository && !updateCheck.otaAvailable
+        ? '未配置 GitHub 仓库，GitHub 更新检查未启用。'
+      : hasBinaryUpdate
+        ? `发现 GitHub Release v${updateCheck.githubRelease?.version}。`
+        : updateCheck.otaAvailable
+          ? '发现可应用的代码更新。'
+          : '当前已经是最新版本。';
+  const updateStatusTone: 'info' | 'success' | 'warning' = !updateCheck
+    ? 'info'
+    : updateCheck.githubError
+      ? 'warning'
+      : !updateCheck.repository && !updateCheck.otaAvailable
+        ? 'warning'
+      : hasBinaryUpdate || updateCheck.otaAvailable
+        ? 'info'
+        : 'success';
 
   return (
     <Screen theme={theme} keyboard testID="settings-screen">
@@ -996,6 +1112,65 @@ export function SettingsScreen({
           theme={theme}
           loading={savingSettings}
         />
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="版本与更新"
+          subtitle={`当前版本 v${CURRENT_APP_VERSION}`}
+          theme={theme}
+        />
+        <InlineNotice
+          theme={theme}
+          tone={updateStatusTone}
+          message={updateStatusMessage}
+        />
+        <View style={styles.buttonRow}>
+          <AppButton
+            label="检查更新"
+            icon="refresh-outline"
+            onPress={() => void handleCheckUpdates()}
+            theme={theme}
+            loading={checkingUpdates}
+            variant="secondary"
+            testID="settings-check-updates"
+            compact
+          />
+          {hasBinaryUpdate && updateCheck?.githubRelease ? (
+            <AppButton
+              label={
+                Platform.OS === 'android' && updateCheck.githubRelease.apkAsset
+                  ? '下载 APK'
+                  : '查看 Release'
+              }
+              icon={
+                Platform.OS === 'android' && updateCheck.githubRelease.apkAsset
+                  ? 'download-outline'
+                  : 'open-outline'
+              }
+              onPress={() =>
+                void (Platform.OS === 'android' && updateCheck.githubRelease?.apkAsset
+                  ? handleDownloadUpdate()
+                  : openGitHubReleasePage(updateCheck.githubRelease))
+              }
+              theme={theme}
+              loading={downloadingUpdate}
+              compact
+            />
+          ) : null}
+          {updateCheck?.otaAvailable ? (
+            <AppButton
+              label="应用代码更新"
+              icon="cloud-download-outline"
+              onPress={() => void handleApplyOta()}
+              theme={theme}
+              variant="secondary"
+              loading={applyingOta}
+              compact
+            />
+          ) : null}
+        </View>
+        <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>GitHub Release 提供完整 APK 更新；Expo Updates 只替换 JavaScript 和资源，不替换原生模块。</Text>
       </View>
 
       {Platform.OS === 'android' ? (
