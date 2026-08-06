@@ -53,7 +53,7 @@ npm run version:set -- 1.0.1
 npm run version:check
 ```
 
-提交后推送匹配的 tag（例如 `v1.0.1`）会触发 `.github/workflows/release.yml`，生成签名 APK 并发布 GitHub Release。发布工作流需要配置以下 GitHub Actions secrets，且必须长期使用同一份 keystore，否则已安装版本无法覆盖更新：
+提交后推送匹配的 tag（例如 `v1.0.1`）会触发 `.github/workflows/ci.yml`：先执行 `Analyze and test`，再构建并上传签名 Android APK，最后发布 GitHub Release。也可以手动运行 `CI` 并在 `release_tag` 中填写已有的 `vMAJOR.MINOR.PATCH` tag。发布工作流需要配置以下 GitHub Actions secrets，且必须长期使用同一份 keystore，否则已安装版本无法覆盖更新：
 
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
