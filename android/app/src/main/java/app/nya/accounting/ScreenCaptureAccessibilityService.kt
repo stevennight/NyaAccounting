@@ -6,6 +6,7 @@ import android.hardware.HardwareBuffer
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.widget.Toast
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.content.Intent
@@ -47,7 +48,7 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     }
 
     capturing = true
-    dismissNotificationShade()
+    dismissNotificationShadeForAction()
     // The notification shade closes with an animation. Capture after it has
     // settled so the system panel is not included in the bitmap.
     mainHandler.postDelayed({
@@ -87,7 +88,7 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     return true
   }
 
-  private fun dismissNotificationShade() {
+  fun dismissNotificationShadeForAction() {
     // This global action is available before Android 12 as well. Calling it
     // on Android 11 avoids falling back to the less reliable broadcast path.
     val dismissed = runCatching {
@@ -128,12 +129,19 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     }
 
     ScreenCaptureStore.savePendingUri(this, file.toURI().toString())
+    showCaptureSuccessToast()
     ScreenCaptureNotification.refresh(this)
   }
 
   private fun deliverError(message: String) {
     ScreenCaptureStore.savePendingError(this, message)
     ScreenCaptureNotification.refresh(this)
+  }
+
+  private fun showCaptureSuccessToast() {
+    mainHandler.post {
+      Toast.makeText(this, "截图已完成", Toast.LENGTH_SHORT).show()
+    }
   }
 
   companion object {

@@ -32,6 +32,7 @@ class ScreenCaptureActionReceiver : BroadcastReceiver() {
   }
 
   private fun startOverlay(context: Context) {
+    dismissNotificationShade(context)
     if (!Settings.canDrawOverlays(context)) {
       ScreenCaptureStore.savePendingError(
         context,
@@ -51,6 +52,7 @@ class ScreenCaptureActionReceiver : BroadcastReceiver() {
   }
 
   private fun openMainActivity(context: Context) {
+    dismissNotificationShade(context)
     ScreenCaptureOverlayService.stop(context)
     ScreenCaptureNotification.refresh(context)
     context.startActivity(
@@ -62,5 +64,12 @@ class ScreenCaptureActionReceiver : BroadcastReceiver() {
         )
       },
     )
+  }
+
+  private fun dismissNotificationShade(context: Context) {
+    ScreenCaptureAccessibilityService.instance?.dismissNotificationShadeForAction()
+      ?: runCatching {
+        context.sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+      }
   }
 }
