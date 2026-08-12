@@ -117,6 +117,29 @@ jobs:
       - name: Generate native Android project
         run: npm exec expo -- prebuild --platform android --no-install
 
+      - name: Configure Android build memory
+        shell: bash
+        run: |
+          set -euo pipefail
+          properties_file=android/gradle.properties
+
+          set_property() {
+            local key="$1"
+            local value="$2"
+            if grep -q "^${key}=" "$properties_file"; then
+              sed -i "s|^${key}=.*|${key}=${value}|" "$properties_file"
+            else
+              printf '%s\n' "${key}=${value}" >> "$properties_file"
+            fi
+          }
+
+          set_property org.gradle.jvmargs '-Xmx3072m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
+          set_property org.gradle.parallel 'false'
+          set_property org.gradle.workers.max '2'
+          set_property kotlin.daemon.jvmargs '-Xmx2048m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
+
+          cat "$properties_file"
+
       - name: Build Android artifact
         run: ./gradlew assembleRelease
         working-directory: android
