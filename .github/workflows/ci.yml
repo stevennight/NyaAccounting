@@ -115,7 +115,7 @@ jobs:
           echo "ANDROID_KEYSTORE_FILE=$keystore_path" >> "$GITHUB_ENV"
 
       - name: Generate native Android project
-        run: npm exec expo -- prebuild --platform android --no-install
+        run: npm exec expo -- prebuild --platform android --no-install --no-clean
 
       - name: Configure Android build memory
         shell: bash
