@@ -150,10 +150,16 @@ jobs:
             fi
           }
 
-          set_property org.gradle.jvmargs '-Xmx3072m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
+          set_property org.gradle.jvmargs '-Xmx4096m -XX:MaxMetaspaceSize=2048m -Dfile.encoding=UTF-8'
           set_property org.gradle.parallel 'false'
           set_property org.gradle.workers.max '2'
-          set_property kotlin.daemon.jvmargs '-Xmx2048m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
+          set_property kotlin.compiler.execution.strategy 'in-process'
+          set_property kotlin.daemon.jvmargs '-Xmx3072m -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8'
+          set_property ksp.incremental 'false'
+
+          # Release APKs only need device ABIs; skipping emulator ABIs keeps native
+          # compilation and the Metro bundle within the GitHub runner memory budget.
+          set_property reactNativeArchitectures 'armeabi-v7a,arm64-v8a'
 
           cat "$properties_file"
 
@@ -162,6 +168,10 @@ jobs:
         run: |
           set -euo pipefail
           cat >> android/app/build.gradle <<'GRADLE'
+
+          react {
+            extraPackagerArgs = ['--max-workers', '2']
+          }
 
           android {
             signingConfigs {
@@ -181,7 +191,7 @@ jobs:
           GRADLE
 
       - name: Build Android artifact
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --no-daemon --stacktrace --info --console=plain
         working-directory: android
 
       - name: Package Android artifact
