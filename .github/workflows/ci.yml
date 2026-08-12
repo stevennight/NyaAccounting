@@ -115,7 +115,24 @@ jobs:
           echo "ANDROID_KEYSTORE_FILE=$keystore_path" >> "$GITHUB_ENV"
 
       - name: Generate native Android project
-        run: npm exec expo -- prebuild --platform android --no-install --no-clean
+        run: npm exec expo -- prebuild --platform android --no-install
+
+      - name: Restore custom Android screenshot integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git restore --source=HEAD -- \
+            android/app/src/main/AndroidManifest.xml \
+            android/app/src/main/java/app/nya/accounting/MainApplication.kt \
+            android/app/src/main/java/app/nya/accounting/ScreenCaptureAccessibilityService.kt \
+            android/app/src/main/java/app/nya/accounting/ScreenCaptureActionReceiver.kt \
+            android/app/src/main/java/app/nya/accounting/ScreenCaptureModule.kt \
+            android/app/src/main/java/app/nya/accounting/ScreenCaptureNotification.kt \
+            android/app/src/main/java/app/nya/accounting/ScreenCaptureOverlayService.kt \
+            android/app/src/main/java/app/nya/accounting/ScreenCapturePackage.kt \
+            android/app/src/main/java/app/nya/accounting/ScreenCaptureStore.kt \
+            android/app/src/main/res/values/strings.xml \
+            android/app/src/main/res/xml/screen_capture_accessibility_service.xml
 
       - name: Configure Android build memory
         shell: bash
@@ -139,6 +156,29 @@ jobs:
           set_property kotlin.daemon.jvmargs '-Xmx2048m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
 
           cat "$properties_file"
+
+      - name: Configure release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android {
+            signingConfigs {
+              release {
+                storeFile file(System.getenv('ANDROID_KEYSTORE_FILE'))
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+              }
+            }
+            buildTypes {
+              release {
+                signingConfig signingConfigs.release
+              }
+            }
+          }
+          GRADLE
 
       - name: Build Android artifact
         run: ./gradlew assembleRelease
