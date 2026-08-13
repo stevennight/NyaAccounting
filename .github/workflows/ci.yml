@@ -55,6 +55,7 @@ jobs:
     needs: quality
     runs-on: ubuntu-latest
     env:
+      NODE_ENV: production
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -153,13 +154,12 @@ jobs:
           set_property org.gradle.jvmargs '-Xmx4096m -XX:MaxMetaspaceSize=2048m -Dfile.encoding=UTF-8'
           set_property org.gradle.parallel 'false'
           set_property org.gradle.workers.max '2'
-          set_property kotlin.compiler.execution.strategy 'in-process'
-          set_property kotlin.daemon.jvmargs '-Xmx3072m -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8'
-          set_property ksp.incremental 'false'
+          set_property kotlin.daemon.jvmargs '-Xmx3072m -XX:MaxMetaspaceSize=2048m -Dfile.encoding=UTF-8'
 
           # Release APKs only need device ABIs; skipping emulator ABIs keeps native
           # compilation and the Metro bundle within the GitHub runner memory budget.
           set_property reactNativeArchitectures 'armeabi-v7a,arm64-v8a'
+          set_property expo.inlineModules.watchedDirectories '[]'
 
           cat "$properties_file"
 
