@@ -483,6 +483,13 @@ function validateSettings(value: unknown): AppSettings {
     minimum: 1,
     maximum: 600_000,
   });
+  if (ai.maxConcurrentRecognitions !== undefined) {
+    expectSafeInteger(
+      ai.maxConcurrentRecognitions,
+      `${path}.ai.maxConcurrentRecognitions`,
+      { minimum: 1, maximum: 8 },
+    );
+  }
   expectBoolean(ai.sendImages, `${path}.ai.sendImages`);
 
   return normalizedSettings;

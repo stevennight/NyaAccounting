@@ -311,6 +311,7 @@ export interface AiSettings {
   transcriptionModel?: string;
   reasoningEffort: AiReasoningEffort;
   requestTimeoutMs: number;
+  maxConcurrentRecognitions: number;
   sendImages: boolean;
 }
 

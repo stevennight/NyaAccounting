@@ -23,7 +23,10 @@ import { CategorySettingsScreen } from './src/screens/CategorySettingsScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { RecordsScreen } from './src/screens/RecordsScreen';
 import { RecurringExpensesScreen } from './src/screens/RecurringExpensesScreen';
-import { SettingsScreen } from './src/screens/SettingsScreen';
+import {
+  SettingsScreen,
+  type SettingsDetailSection,
+} from './src/screens/SettingsScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
 import { TransactionEditScreen } from './src/screens/TransactionEditScreen';
 import { UpdateBanner } from './src/components/UpdateBanner';
@@ -55,6 +58,7 @@ function AppContent() {
   type AppRoute =
     | { type: 'tab'; tab: AppTab }
     | { type: 'capture' }
+    | { type: 'settings'; section: SettingsDetailSection }
     | { type: 'category-settings' }
     | { type: 'transaction'; transactionId: string }
     | { type: 'recurring-expenses'; startCreating: boolean };
@@ -310,6 +314,32 @@ function AppContent() {
         startCreating={currentRoute.startCreating}
       />
     );
+  } else if (currentRoute.type === 'settings') {
+    content = (
+      <SettingsScreen
+        theme={theme}
+        section={currentRoute.section}
+        onBack={goBack}
+        onOpenSection={(section) =>
+          setRoutes((current) => [...current, { type: 'settings', section }])
+        }
+        onOpenCategories={() =>
+          setRoutes((current) => [
+            ...current,
+            { type: 'category-settings' },
+          ])
+        }
+        onOpenRecurringExpenses={() =>
+          setRoutes((current) => [
+            ...current,
+            {
+              type: 'recurring-expenses',
+              startCreating: dataset.recurringExpenses.length === 0,
+            },
+          ])
+        }
+      />
+    );
   } else if (currentRoute.type === 'category-settings') {
     content = <CategorySettingsScreen theme={theme} onBack={goBack} />;
   } else if (currentRoute.type === 'transaction' && editingTransaction) {
@@ -367,6 +397,9 @@ function AppContent() {
         content = (
           <SettingsScreen
             theme={theme}
+            onOpenSection={(section) =>
+              setRoutes((current) => [...current, { type: 'settings', section }])
+            }
             onOpenCategories={() =>
               setRoutes((current) => [
                 ...current,

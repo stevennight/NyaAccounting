@@ -50,6 +50,7 @@ import {
   confirmTransactionDraft,
   findDuplicateCandidates,
   findRecurringExpenseMatch,
+  mapWithConcurrency,
   normalizeTransactionDraft,
   validateTransactionDraft,
   type DuplicateCandidate,
@@ -128,6 +129,7 @@ type RecognitionProgress = {
   completed: number;
   succeeded: number;
   failed: number;
+  concurrency: number;
 };
 
 type PermissionNotice = {
@@ -380,7 +382,7 @@ function RecognitionProgressPanel({
     >
       <View style={styles.progressHeader}>
         <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
-          正在识别第 {current}/{progress.total} 张截图
+          正在并发识别 · 第 {current}/{progress.total} 张截图
         </Text>
         <Text style={[styles.progressPercent, { color: theme.colors.primary }]}>
           {percent}%
@@ -401,6 +403,7 @@ function RecognitionProgressPanel({
       </View>
       <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
         已完成 {progress.completed}/{progress.total} 张
+        {' · '}最多同时处理 {progress.concurrency} 张
         {progress.succeeded > 0 ? ` · 成功 ${progress.succeeded}` : ''}
         {progress.failed > 0 ? ` · 失败 ${progress.failed}` : ''}
       </Text>
@@ -1227,6 +1230,10 @@ export function CaptureScreen({
       completed: 0,
       succeeded: 0,
       failed: 0,
+      concurrency: Math.min(
+        Math.max(1, settings.ai.maxConcurrentRecognitions),
+        Math.max(1, inputs.length),
+      ),
     });
     setNotice(null);
 
@@ -1271,18 +1278,12 @@ export function CaptureScreen({
       ) {
         throw cancelledRequestError();
       }
-      const reviewItems: ReviewQueueItem[] = [];
-      const failedReviewItems: ReviewQueueItem[] = [];
       const failedItems: string[] = [];
       const compatibilityWarnings = new Set<string>();
-
-      for (let index = 0; index < inputs.length; index += 1) {
-        const item = inputs[index];
-        setRecognitionProgress((current) =>
-          current
-            ? { ...current, current: index + 1 }
-            : current,
-        );
+      const results = await mapWithConcurrency(
+        inputs,
+        settings.ai.maxConcurrentRecognitions,
+        async (item, index): Promise<ReviewQueueItem> => {
         let screenshot: Awaited<ReturnType<typeof prepareScreenshot>> | null =
           null;
         try {
@@ -1304,24 +1305,23 @@ export function CaptureScreen({
           const sendsVoice = VOICE_CAPTURE_ENABLED && Boolean(transcript);
           if (!sendsImage && !sendsText && !sendsVoice) {
             const message = `第 ${index + 1} 张截图没有可发送内容`;
-            failedItems.push(message);
-            failedReviewItems.push({
-              id: item.id,
-              asset: item.asset,
-              draft: null,
-              error: message,
-            });
             setRecognitionProgress((current) =>
               current
                 ? {
                     ...current,
-                    completed: index + 1,
+                    completed: current.completed + 1,
                     failed: current.failed + 1,
-                    current: Math.min(index + 2, current.total),
+                    current: Math.min(current.completed + 2, current.total),
                   }
                 : current,
             );
-            continue;
+            return {
+              id: item.id,
+              asset: item.asset,
+              text: item.text,
+              draft: null,
+              error: message,
+            };
           }
 
           const source = captureSource(sendsImage, sendsText, sendsVoice);
@@ -1366,19 +1366,19 @@ export function CaptureScreen({
               source,
             },
           );
-          reviewItems.push({
+          const reviewItem = {
             id: item.id,
             asset: item.asset,
             text: item.text,
             draft: normalized,
-          });
+          } satisfies ReviewQueueItem;
           setRecognitionProgress((current) =>
             current
               ? {
                   ...current,
-                  completed: index + 1,
+                  completed: current.completed + 1,
                   succeeded: current.succeeded + 1,
-                  current: Math.min(index + 2, current.total),
+                  current: Math.min(current.completed + 2, current.total),
                 }
               : current,
           );
@@ -1387,35 +1387,49 @@ export function CaptureScreen({
               '当前接口或模型不支持所选思考级别，已按自动模式完成识别。',
             );
           }
+          return reviewItem;
         } catch (error) {
           if (isCancellationError(error)) {
             throw error;
           }
           const message =
             `第 ${index + 1} 张截图识别失败：${userFacingError(error)}`;
-          failedItems.push(message);
-          failedReviewItems.push({
+          setRecognitionProgress((current) =>
+            current
+              ? {
+                  ...current,
+                  completed: current.completed + 1,
+                  failed: current.failed + 1,
+                  current: Math.min(current.completed + 2, current.total),
+                }
+              : current,
+          );
+          return {
             id: item.id,
             asset: item.asset,
             text: item.text,
             draft: null,
             error: message,
-          });
-          setRecognitionProgress((current) =>
-            current
-              ? {
-                  ...current,
-                  completed: index + 1,
-                  failed: current.failed + 1,
-                  current: Math.min(index + 2, current.total),
-                }
-              : current,
-          );
+          };
         } finally {
           deleteTemporaryUri(screenshot?.uri);
         }
-      }
+      },
+      );
 
+      const reviewItems = results.filter(
+        (item): item is ReviewQueueItem & { draft: TransactionDraft } =>
+          Boolean(item.draft),
+      );
+      const failedReviewItems = results.filter(
+        (item): item is ReviewQueueItem & { draft: null; error: string } =>
+          !item.draft,
+      );
+      failedItems.push(
+        ...failedReviewItems
+          .map((item) => item.error)
+          .filter((message): message is string => Boolean(message)),
+      );
       const nextReviewQueue = [...reviewItems, ...failedReviewItems];
       if (nextReviewQueue.length === 0) {
         throw new Error(
@@ -1470,10 +1484,10 @@ export function CaptureScreen({
     }
   }, [
     activateReviewQueueItem,
-    beginReview,
     configuredAiService,
     canRecognize,
     imageItems,
+    settings.ai.maxConcurrentRecognitions,
     settings.ai.sendImages,
     settings.categories,
     settings.currency,

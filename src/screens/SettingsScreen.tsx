@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+} from 'react';
 import {
   Alert,
   PermissionsAndroid,
   Platform,
+  Pressable,
   StyleSheet,
   Switch,
   Text,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { createDemoDataset } from '../domain/demoData';
 import { majorToMinor, minorToMajor } from '../domain/money';
@@ -70,8 +78,35 @@ const reasoningOptions: Array<ChoiceOption<AiReasoningEffort>> = [
   { value: 'max', label: '最大' },
 ];
 
+export type SettingsSection = 'home' | 'budget' | 'ledger' | 'ai' | 'system' | 'data';
+export type SettingsDetailSection = Exclude<SettingsSection, 'home'>;
+
+function settingsSectionTitle(section: SettingsSection): string {
+  return {
+    home: '设置',
+    budget: '预算与外观',
+    ledger: '账本设置',
+    ai: 'AI 识别',
+    system: '系统与更新',
+    data: '数据管理',
+  }[section];
+}
+
+function settingsSectionSubtitle(section: SettingsDetailSection): string {
+  return {
+    budget: '调整预算和界面主题',
+    ledger: '管理分类、支付渠道和固定支出',
+    ai: '配置接口并控制批量识别',
+    system: '查看版本并设置系统截图入口',
+    data: '导入、导出或清理本地账本',
+  }[section];
+}
+
 type SettingsScreenProps = {
   theme: AppTheme;
+  section?: SettingsSection;
+  onOpenSection?: (section: SettingsDetailSection) => void;
+  onBack?: () => void;
   onOpenCategories: () => void;
   onOpenRecurringExpenses: () => void;
 };
@@ -144,8 +179,53 @@ function SwitchRow({
   );
 }
 
+function SettingsNavigationRow({
+  theme,
+  icon,
+  title,
+  detail,
+  onPress,
+  testID,
+}: {
+  theme: AppTheme;
+  icon: ComponentProps<typeof Ionicons>['name'];
+  title: string;
+  detail: string;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      onPress={onPress}
+      testID={testID}
+      style={({ pressed }) => [
+        styles.navigationRow,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          opacity: pressed ? 0.72 : 1,
+        },
+      ]}
+    >
+      <View style={[styles.navigationIcon, { backgroundColor: theme.colors.primarySoft }]}>
+        <Ionicons name={icon} size={21} color={theme.colors.primary} />
+      </View>
+      <View style={styles.navigationCopy}>
+        <Text style={[styles.navigationTitle, { color: theme.colors.text }]}>{title}</Text>
+        <Text style={[styles.navigationDetail, { color: theme.colors.textMuted }]}>{detail}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+    </Pressable>
+  );
+}
+
 export function SettingsScreen({
   theme,
+  section = 'home',
+  onOpenSection,
+  onBack,
   onOpenCategories,
   onOpenRecurringExpenses,
 }: SettingsScreenProps) {
@@ -160,6 +240,9 @@ export function SettingsScreen({
   const [model, setModel] = useState(settings.ai.model);
   const [transcriptionModel, setTranscriptionModel] = useState(
     settings.ai.transcriptionModel ?? 'gpt-4o-mini-transcribe',
+  );
+  const [maxConcurrentRecognitions, setMaxConcurrentRecognitions] = useState(
+    String(settings.ai.maxConcurrentRecognitions),
   );
   const [reasoningEffort, setReasoningEffort] = useState(
     settings.ai.reasoningEffort,
@@ -245,8 +328,11 @@ export function SettingsScreen({
   }, []);
 
   useEffect(() => {
+    if (section !== 'system') {
+      return;
+    }
     void refreshScreenCaptureStatus();
-  }, [refreshScreenCaptureStatus]);
+  }, [refreshScreenCaptureStatus, section]);
 
   useEffect(() => {
     setBudget(
@@ -259,9 +345,11 @@ export function SettingsScreen({
     setTranscriptionModel(
       settings.ai.transcriptionModel ?? 'gpt-4o-mini-transcribe',
     );
+    setMaxConcurrentRecognitions(String(settings.ai.maxConcurrentRecognitions));
     setReasoningEffort(settings.ai.reasoningEffort);
   }, [
     settings.ai.endpoint,
+    settings.ai.maxConcurrentRecognitions,
     settings.ai.model,
     settings.ai.reasoningEffort,
     settings.ai.transcriptionModel,
@@ -316,6 +404,11 @@ export function SettingsScreen({
       setNotice({ tone: 'danger', message: '预算金额超出可保存范围。' });
       return;
     }
+    const concurrency = Number(maxConcurrentRecognitions);
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) {
+      setNotice({ tone: 'danger', message: '批量识别并发数需要是 1 到 8 之间的整数。' });
+      return;
+    }
     setSavingSettings(true);
     setNotice(null);
     try {
@@ -326,6 +419,7 @@ export function SettingsScreen({
           model: model.trim(),
           transcriptionModel: transcriptionModel.trim(),
           reasoningEffort,
+          maxConcurrentRecognitions: concurrency,
         },
       });
       setNotice({ tone: 'success', message: '设置已保存在本机。' });
@@ -836,7 +930,13 @@ export function SettingsScreen({
 
   return (
     <Screen theme={theme} keyboard testID="settings-screen">
-      <PageHeader theme={theme} title="设置" subtitle="预算、AI 与本地数据" />
+      <PageHeader
+        theme={theme}
+        title={section === 'home' ? '设置' : settingsSectionTitle(section)}
+        subtitle={section === 'home' ? '预算、AI 与本地数据' : settingsSectionSubtitle(section)}
+        onBack={section === 'home' ? undefined : onBack}
+        backLabel="返回设置"
+      />
 
       {notice ? (
         <View style={styles.notice}>
@@ -844,7 +944,53 @@ export function SettingsScreen({
         </View>
       ) : null}
 
-      <View style={styles.section}>
+      {section === 'home' ? (
+        <View style={styles.section}>
+          <SectionHeader title="设置分类" subtitle="选择要调整的内容" theme={theme} />
+          <SettingsNavigationRow
+            theme={theme}
+            icon="wallet-outline"
+            title="预算与外观"
+            detail={`月度预算${settings.monthlyBudgetMinor > 0 ? ` ${minorToMajor(settings.monthlyBudgetMinor, settings.currency)}` : '未设置'} · ${settings.theme === 'system' ? '跟随系统' : settings.theme === 'light' ? '浅色' : '深色'}`}
+            onPress={() => onOpenSection?.('budget')}
+            testID="settings-section-budget"
+          />
+          <SettingsNavigationRow
+            theme={theme}
+            icon="book-outline"
+            title="账本设置"
+            detail={`${settings.categories.length} 个分类 · ${settings.paymentChannels.length} 个支付渠道 · ${dataset.recurringExpenses.length} 个固定支出`}
+            onPress={() => onOpenSection?.('ledger')}
+            testID="settings-section-ledger"
+          />
+          <SettingsNavigationRow
+            theme={theme}
+            icon="sparkles-outline"
+            title="AI 识别"
+            detail={settings.ai.enabled ? `已启用 · 最大并发 ${settings.ai.maxConcurrentRecognitions}` : '未启用'}
+            onPress={() => onOpenSection?.('ai')}
+            testID="settings-section-ai"
+          />
+          <SettingsNavigationRow
+            theme={theme}
+            icon="phone-portrait-outline"
+            title="系统与更新"
+            detail={`当前版本 v${CURRENT_APP_VERSION}`}
+            onPress={() => onOpenSection?.('system')}
+            testID="settings-section-system"
+          />
+          <SettingsNavigationRow
+            theme={theme}
+            icon="cloud-outline"
+            title="数据管理"
+            detail={`${dataset.transactions.length} 笔账目 · 本地备份与清理`}
+            onPress={() => onOpenSection?.('data')}
+            testID="settings-section-data"
+          />
+        </View>
+      ) : null}
+
+      {section === 'budget' ? <View style={styles.section}>
         <SectionHeader title="预算" theme={theme} />
         <FormField
           theme={theme}
@@ -864,9 +1010,16 @@ export function SettingsScreen({
           onChange={(value) => updateSettingSafely({ theme: value })}
           scrollable={false}
         />
-      </View>
+        <AppButton
+          label="保存预算设置"
+          icon="save-outline"
+          onPress={() => void saveGeneralSettings()}
+          theme={theme}
+          loading={savingSettings}
+        />
+      </View> : null}
 
-      <View style={styles.section}>
+      {section === 'ledger' ? <View style={styles.section}>
         <SectionHeader
           title="支付渠道"
           subtitle="识别和表单使用这里的渠道；可以添加个人常用渠道。"
@@ -920,9 +1073,9 @@ export function SettingsScreen({
             );
           })}
         </View>
-      </View>
+      </View> : null}
 
-      <View style={styles.section}>
+      {section === 'ledger' ? <View style={styles.section}>
         <SectionHeader
           title="分类与子分类"
           subtitle={`${settings.categories.length} 个分类`}
@@ -936,9 +1089,9 @@ export function SettingsScreen({
           variant="secondary"
           testID="settings-categories"
         />
-      </View>
+      </View> : null}
 
-      <View style={styles.section}>
+      {section === 'ledger' ? <View style={styles.section}>
         <SectionHeader
           title="固定支出与订阅"
           subtitle={
@@ -971,9 +1124,9 @@ export function SettingsScreen({
             }
           />
         ) : null}
-      </View>
+      </View> : null}
 
-      <View style={styles.section}>
+      {section === 'ai' ? <View style={styles.section}>
         <SectionHeader
           title="AI 识别"
           subtitle="兼容 OpenAI 风格的多模态接口"
@@ -1012,6 +1165,16 @@ export function SettingsScreen({
           autoCorrect={false}
           placeholder="gpt-4.1-mini"
           testID="settings-model"
+        />
+        <FormField
+          theme={theme}
+          label="批量识别最大并发数"
+          value={maxConcurrentRecognitions}
+          onChangeText={setMaxConcurrentRecognitions}
+          keyboardType="number-pad"
+          placeholder="3"
+          hint="同时处理的截图数量，范围为 1 到 8。数值越大速度越快，也更容易触发接口限流。"
+          testID="settings-max-concurrent-recognitions"
         />
         <View style={styles.settingGroup}>
           <Text style={[styles.settingLabel, { color: theme.colors.text }]}>思考级别</Text>
@@ -1106,15 +1269,15 @@ export function SettingsScreen({
           }
         />
         <AppButton
-          label="保存预算与模型设置"
+          label="保存 AI 设置"
           icon="save-outline"
           onPress={() => void saveGeneralSettings()}
           theme={theme}
           loading={savingSettings}
         />
-      </View>
+      </View> : null}
 
-      <View style={styles.section}>
+      {section === 'system' ? <View style={styles.section}>
         <SectionHeader
           title="版本与更新"
           subtitle={`当前版本 v${CURRENT_APP_VERSION}`}
@@ -1171,9 +1334,9 @@ export function SettingsScreen({
           ) : null}
         </View>
         <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>GitHub Release 提供完整 APK 更新；Expo Updates 只替换 JavaScript 和资源，不替换原生模块。</Text>
-      </View>
+      </View> : null}
 
-      {Platform.OS === 'android' ? (
+      {section === 'system' && Platform.OS === 'android' ? (
         <View style={styles.section}>
           <SectionHeader
             title="当前页面截图"
@@ -1247,7 +1410,7 @@ export function SettingsScreen({
         </View>
       ) : null}
 
-      <View style={styles.section}>
+      {section === 'data' ? <View style={styles.section}>
         <SectionHeader title="数据" subtitle="账本只保存在本机" theme={theme} />
         <View
           style={[
@@ -1304,7 +1467,7 @@ export function SettingsScreen({
           variant="danger"
           disabled={dataAction !== null}
         />
-      </View>
+      </View> : null}
     </Screen>
   );
 }
@@ -1316,6 +1479,34 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: spacing.xxl,
     gap: spacing.lg,
+  },
+  navigationRow: {
+    minHeight: 76,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  navigationIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigationCopy: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  navigationTitle: {
+    fontSize: typography.body,
+    fontWeight: '800',
+  },
+  navigationDetail: {
+    fontSize: typography.caption,
+    lineHeight: 18,
   },
   switchRow: {
     minHeight: 58,

@@ -39,6 +39,25 @@ describe('settings normalization', () => {
     assert.equal(legacy.ai.reasoningEffort, 'auto');
     assert.equal(configured.ai.reasoningEffort, 'none');
     assert.equal(invalid.ai.reasoningEffort, 'auto');
+    assert.equal(legacy.ai.maxConcurrentRecognitions, 3);
+  });
+
+  test('clamps batch recognition concurrency to the supported range', () => {
+    assert.equal(
+      domain.normalizeAppSettings({ ai: { maxConcurrentRecognitions: 99 } })
+        .ai.maxConcurrentRecognitions,
+      8,
+    );
+    assert.equal(
+      domain.normalizeAppSettings({ ai: { maxConcurrentRecognitions: 0 } })
+        .ai.maxConcurrentRecognitions,
+      1,
+    );
+    assert.equal(
+      domain.normalizeAppSettings({ ai: { maxConcurrentRecognitions: 2.6 } })
+        .ai.maxConcurrentRecognitions,
+      3,
+    );
   });
 
   test('migrates old settings to independent default category copies', () => {
@@ -84,6 +103,36 @@ describe('settings normalization', () => {
       domain.getCategoryDefinition('work_tools', settings.categories).label,
       '工作工具',
     );
+  });
+});
+
+describe('concurrency helpers', () => {
+  test('limits active work and preserves input order', async () => {
+    let active = 0;
+    let peak = 0;
+    const results = await domain.mapWithConcurrency(
+      [40, 10, 30, 20],
+      2,
+      async (delay, index) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        active -= 1;
+        return `${index}:${delay}`;
+      },
+    );
+
+    assert.equal(peak, 2);
+    assert.deepEqual(results, ['0:40', '1:10', '2:30', '3:20']);
+  });
+
+  test('does not start more workers than items', async () => {
+    const results = await domain.mapWithConcurrency(
+      ['a', 'b'],
+      8,
+      async (value) => value.toUpperCase(),
+    );
+    assert.deepEqual(results, ['A', 'B']);
   });
 });
 

@@ -23,6 +23,7 @@ export const DEFAULT_AI_SETTINGS: Readonly<AiSettings> = {
   transcriptionModel: 'gpt-4o-mini-transcribe',
   reasoningEffort: 'auto',
   requestTimeoutMs: 45_000,
+  maxConcurrentRecognitions: 3,
   sendImages: true,
 };
 
@@ -262,6 +263,14 @@ export function normalizeAppSettings(input: unknown): AppSettings {
               Math.min(120_000, Math.round(rawAi.requestTimeoutMs)),
             )
           : DEFAULT_AI_SETTINGS.requestTimeoutMs,
+      maxConcurrentRecognitions:
+        typeof rawAi.maxConcurrentRecognitions === 'number' &&
+        Number.isFinite(rawAi.maxConcurrentRecognitions)
+          ? Math.max(
+              1,
+              Math.min(8, Math.round(rawAi.maxConcurrentRecognitions)),
+            )
+          : DEFAULT_AI_SETTINGS.maxConcurrentRecognitions,
       sendImages:
         typeof rawAi.sendImages === 'boolean'
           ? rawAi.sendImages
