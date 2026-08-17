@@ -59,8 +59,7 @@ export function DonutChart({
                   strokeLinecap="butt"
                   strokeDasharray={`${dash} ${circumference - dash}`}
                   strokeDashoffset={dashOffset}
-                  rotation="-90"
-                  origin={`${size / 2}, ${size / 2}`}
+                  transform={`rotate(-90 ${size / 2} ${size / 2})`}
                 />
               );
             })
@@ -98,4 +97,3 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
   },
 });
-

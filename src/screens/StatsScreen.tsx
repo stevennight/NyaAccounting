@@ -165,6 +165,107 @@ export function StatsScreen({ theme }: StatsScreenProps) {
         </View>
       </View>
 
+      <View style={styles.section}>
+        <SectionHeader
+          title="预期外支出"
+          subtitle="本月已确认支出中的人工标记"
+          theme={theme}
+        />
+        <View
+          style={[
+            styles.unexpectedPanel,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+          ]}
+        >
+          <View style={styles.unexpectedSummary}>
+            <View style={styles.unexpectedAmountBlock}>
+              <Text style={[styles.kpiLabel, { color: theme.colors.textMuted }]}>金额</Text>
+              <Text style={[styles.unexpectedAmount, { color: theme.colors.text }]}>
+                {formatMoneyMinor(
+                  analytics.unexpected.amountMinor,
+                  dataset.settings.currency,
+                )}
+              </Text>
+            </View>
+            <View style={styles.unexpectedShareBlock}>
+              <Text style={[styles.kpiLabel, { color: theme.colors.textMuted }]}>占支出</Text>
+              <Text
+                style={[styles.unexpectedShare, { color: theme.colors.warning }]}
+              >
+                {Math.round(analytics.unexpected.shareRatio * 100)}%
+              </Text>
+              <Text style={[styles.count, { color: theme.colors.textMuted }]}>
+                {analytics.unexpected.transactionCount} 笔
+              </Text>
+            </View>
+          </View>
+
+          {analytics.unexpected.categories.length === 0 ? (
+            <Text style={[styles.unexpectedEmpty, { color: theme.colors.textMuted }]}>
+              本月还没有标记为预期外的支出。
+            </Text>
+          ) : (
+            <View style={styles.unexpectedCategories}>
+              {analytics.unexpected.categories.map((category) => {
+                const hasSubcategoryBreakdown = category.subcategories.some(
+                  (subcategory) => subcategory.subcategoryId !== null,
+                );
+                return (
+                  <View key={category.categoryId} style={styles.unexpectedCategory}>
+                    <View style={styles.unexpectedCategoryRow}>
+                      <View
+                        style={[styles.dot, { backgroundColor: category.color }]}
+                      />
+                      <Text
+                        style={[styles.unexpectedCategoryLabel, { color: theme.colors.text }]}
+                        numberOfLines={1}
+                      >
+                        {category.label}
+                      </Text>
+                      <Text style={[styles.unexpectedCategoryValue, { color: theme.colors.text }]}>
+                        {formatMoneyMinor(category.amountMinor, dataset.settings.currency)}
+                      </Text>
+                      <Text style={[styles.unexpectedCategoryShare, { color: theme.colors.textMuted }]}>
+                        {Math.round(category.shareRatio * 100)}%
+                      </Text>
+                    </View>
+                    {hasSubcategoryBreakdown ? (
+                      <View
+                        style={[
+                          styles.unexpectedSubcategories,
+                          { borderLeftColor: theme.colors.border },
+                        ]}
+                      >
+                        {category.subcategories.map((subcategory) => (
+                          <View
+                            key={subcategory.subcategoryId ?? 'none'}
+                            style={styles.unexpectedSubcategoryRow}
+                          >
+                            <Text
+                              style={[styles.unexpectedSubcategoryLabel, { color: theme.colors.textMuted }]}
+                              numberOfLines={1}
+                            >
+                              {subcategory.label}
+                            </Text>
+                            <Text style={[styles.unexpectedSubcategoryValue, { color: theme.colors.textMuted }]}>
+                              {formatMoneyMinor(
+                                subcategory.amountMinor,
+                                dataset.settings.currency,
+                              )}{' · '}
+                              {Math.round(subcategory.shareRatio * 100)}%
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      </View>
+
       {analytics.budget.foreignCurrencyTransactionCount > 0 ? (
         <View style={styles.notice}>
           <InlineNotice
@@ -292,6 +393,83 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.lg,
+  },
+  unexpectedPanel: {
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  unexpectedSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.lg,
+  },
+  unexpectedAmountBlock: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  unexpectedAmount: {
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  unexpectedShareBlock: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  unexpectedShare: {
+    fontSize: typography.sectionTitle,
+    fontWeight: '800',
+  },
+  unexpectedEmpty: {
+    fontSize: typography.caption,
+    lineHeight: 18,
+  },
+  unexpectedCategories: {
+    gap: spacing.md,
+  },
+  unexpectedCategory: {
+    gap: spacing.xs,
+  },
+  unexpectedCategoryRow: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  unexpectedCategoryLabel: {
+    flex: 1,
+    fontSize: typography.label,
+    fontWeight: '700',
+  },
+  unexpectedCategoryValue: {
+    fontSize: typography.label,
+    fontWeight: '800',
+  },
+  unexpectedCategoryShare: {
+    width: 38,
+    fontSize: typography.caption,
+    textAlign: 'right',
+  },
+  unexpectedSubcategories: {
+    marginLeft: spacing.lg,
+    paddingLeft: spacing.md,
+    borderLeftWidth: 2,
+    borderLeftColor: '#D5D9E2',
+    gap: spacing.xs,
+  },
+  unexpectedSubcategoryRow: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  unexpectedSubcategoryLabel: {
+    flex: 1,
+    fontSize: typography.caption,
+  },
+  unexpectedSubcategoryValue: {
+    fontSize: typography.caption,
   },
   primaryKpi: {
     flex: 1,

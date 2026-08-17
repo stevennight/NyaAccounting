@@ -86,6 +86,10 @@ const fundingTypeOptions: Array<ChoiceOption<FundingInstrumentType>> =
 
 const NO_RECURRING_EXPENSE = '__none__';
 const NO_SUBCATEGORY = '__none__';
+const unexpectedOptions: Array<ChoiceOption<'normal' | 'unexpected'>> = [
+  { value: 'normal', label: '普通支出' },
+  { value: 'unexpected', label: '预期外支出' },
+];
 
 export function TransactionEditScreen({
   theme,
@@ -110,6 +114,9 @@ export function TransactionEditScreen({
     () => getTransactionLocalTime(transaction) ?? '',
   );
   const [kind, setKind] = useState(transaction.kind);
+  const [isUnexpected, setIsUnexpected] = useState(
+    transaction.kind === 'expense' && transaction.isUnexpected === true,
+  );
   const [status, setStatus] = useState(transaction.status);
   const [categoryId, setCategoryId] = useState(transaction.categoryId);
   const [subcategoryId, setSubcategoryId] = useState(
@@ -198,6 +205,7 @@ export function TransactionEditScreen({
     date,
     time,
     kind,
+    isUnexpected,
     status,
     categoryId,
     subcategoryId,
@@ -218,6 +226,8 @@ export function TransactionEditScreen({
     date !== transaction.date ||
     time !== (getTransactionLocalTime(transaction) ?? '') ||
     kind !== transaction.kind ||
+    isUnexpected !==
+      (transaction.kind === 'expense' && transaction.isUnexpected === true) ||
     status !== transaction.status ||
     categoryId !== transaction.categoryId ||
     (subcategoryId === NO_SUBCATEGORY ? undefined : subcategoryId) !==
@@ -282,6 +292,7 @@ export function TransactionEditScreen({
       recurringExpenseId: _recurringExpenseId,
       subcategoryId: _subcategoryId,
       note: _note,
+      isUnexpected: _isUnexpected,
       ...base
     } = transaction;
     const hasFundingDetails =
@@ -300,6 +311,9 @@ export function TransactionEditScreen({
         (tag) => !/^time:\d{2}:\d{2}(?::\d{2})?$/.test(tag),
       ),
       kind,
+      ...(kind === 'expense' && isUnexpected
+        ? { isUnexpected: true }
+        : {}),
       status,
       categoryId,
       ...(subcategoryId !== NO_SUBCATEGORY ? { subcategoryId } : {}),
@@ -587,7 +601,12 @@ export function TransactionEditScreen({
           theme={theme}
           value={kind}
           options={kindOptions}
-          onChange={setKind}
+          onChange={(value) => {
+            setKind(value);
+            if (value !== 'expense') {
+              setIsUnexpected(false);
+            }
+          }}
           testID="edit-kind"
         />
         <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>交易状态</Text>
@@ -599,6 +618,22 @@ export function TransactionEditScreen({
           scrollable={false}
           testID="edit-status"
         />
+        {kind === 'expense' ? (
+          <>
+            <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>支出标记</Text>
+            <ChoiceChips
+              theme={theme}
+              value={isUnexpected ? 'unexpected' : 'normal'}
+              options={unexpectedOptions}
+              onChange={(value) => setIsUnexpected(value === 'unexpected')}
+              scrollable={false}
+              testID="edit-unexpected"
+            />
+            <Text style={[styles.help, { color: theme.colors.textMuted }]}>
+              标记后仍会计入预算，但会在统计中单独汇总并按分类细分。
+            </Text>
+          </>
+        ) : null}
         <Text style={[styles.help, { color: theme.colors.textMuted }]}>
           只有“已确认”的支出与退款会影响预算；转账、还款和投资不会计入消费。
         </Text>

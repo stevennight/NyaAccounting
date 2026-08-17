@@ -148,6 +148,11 @@ const kindOptions: Array<ChoiceOption<TransactionKind>> =
     label: TRANSACTION_KIND_LABELS[value],
   }));
 
+const unexpectedOptions: Array<ChoiceOption<'normal' | 'unexpected'>> = [
+  { value: 'normal', label: '普通支出' },
+  { value: 'unexpected', label: '预期外支出' },
+];
+
 const statusOptions: Array<ChoiceOption<TransactionStatus>> =
   TRANSACTION_STATUSES.map((value) => ({
     value,
@@ -2160,9 +2165,34 @@ export function CaptureScreen({
             theme={theme}
             value={draft.kind}
             options={kindOptions}
-            onChange={(value) => updateDraft({ kind: value })}
+            onChange={(value) =>
+              updateDraft({
+                kind: value,
+                ...(value !== 'expense' ? { isUnexpected: undefined } : {}),
+              })
+            }
             testID="capture-kind"
           />
+          {draft.kind === 'expense' ? (
+            <>
+              <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>支出标记</Text>
+              <ChoiceChips
+                theme={theme}
+                value={draft.isUnexpected ? 'unexpected' : 'normal'}
+                options={unexpectedOptions}
+                onChange={(value) =>
+                  updateDraft({
+                    isUnexpected: value === 'unexpected' ? true : undefined,
+                  })
+                }
+                scrollable={false}
+                testID="capture-unexpected"
+              />
+              <Text style={[styles.help, { color: theme.colors.textMuted }]}>
+                标记后仍会计入预算，但会在统计中单独汇总并按分类细分。
+              </Text>
+            </>
+          ) : null}
           <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
             交易状态
           </Text>

@@ -52,6 +52,8 @@ export function TransactionRow({
   const category = getCategoryDefinition(transaction.categoryId, categories);
   const isConfirmed = transaction.status === 'confirmed';
   const isRefund = transaction.kind === 'refund';
+  const isUnexpectedExpense =
+    transaction.kind === 'expense' && transaction.isUnexpected === true;
   const counted =
     isConfirmed && (transaction.kind === 'expense' || isRefund);
   const amountColor = !isConfirmed
@@ -111,23 +113,27 @@ export function TransactionRow({
           {amountPrefix}
           {formatMoneyMinor(transaction.amountMinor, transaction.currency)}
         </Text>
-        {!isConfirmed || transaction.kind !== 'expense' ? (
+        {!isConfirmed || transaction.kind !== 'expense' || isUnexpectedExpense ? (
           <Text
             style={[
               styles.kind,
               {
                 color:
-                  transaction.status === 'pending'
+                  isUnexpectedExpense
                     ? theme.colors.warning
-                    : !isConfirmed
-                      ? theme.colors.danger
-                      : theme.colors.textMuted,
+                    : transaction.status === 'pending'
+                      ? theme.colors.warning
+                      : !isConfirmed
+                        ? theme.colors.danger
+                        : theme.colors.textMuted,
               },
             ]}
           >
             {!isConfirmed
               ? TRANSACTION_STATUS_LABELS[transaction.status]
-              : TRANSACTION_KIND_LABELS[transaction.kind]}
+              : isUnexpectedExpense
+                ? '预期外支出'
+                : TRANSACTION_KIND_LABELS[transaction.kind]}
           </Text>
         ) : null}
       </View>

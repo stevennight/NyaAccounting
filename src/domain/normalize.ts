@@ -628,6 +628,8 @@ export function normalizeTransactionDraft(
   }
   const amountMinor =
     parsedAmount === null ? null : Math.abs(parsedAmount);
+  const isUnexpected =
+    input.isUnexpected === true || input.unexpected === true;
 
   const rawCategory = input.categoryId ?? input.category;
   const normalizedRawCategory = normalizeCategoryId(
@@ -700,6 +702,7 @@ export function normalizeTransactionDraft(
     status,
     amountMinor,
     currency,
+    ...(isUnexpected ? { isUnexpected: true } : {}),
     date,
     time,
     merchant,
@@ -866,6 +869,9 @@ export function confirmTransactionDraft(
     status: draft.status,
     amountMinor: Math.abs(draft.amountMinor),
     currency: draft.currency,
+    ...(draft.isUnexpected && draft.kind === 'expense'
+      ? { isUnexpected: true }
+      : {}),
     date: draft.date,
     ...(draft.time ? { time: draft.time } : {}),
     merchant: draft.merchant.trim(),

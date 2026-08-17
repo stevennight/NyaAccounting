@@ -88,6 +88,33 @@ export interface CategoryAnalyticsItem {
   budgetUsedRatio: number | null;
 }
 
+export interface UnexpectedSubcategoryAnalyticsItem {
+  subcategoryId: string | null;
+  label: string;
+  amountMinor: number;
+  shareRatio: number;
+  transactionCount: number;
+}
+
+export interface UnexpectedCategoryAnalyticsItem {
+  categoryId: CategoryId;
+  label: string;
+  color: string;
+  icon: string;
+  amountMinor: number;
+  shareRatio: number;
+  transactionCount: number;
+  subcategories: UnexpectedSubcategoryAnalyticsItem[];
+}
+
+export interface UnexpectedExpenseAnalytics {
+  amountMinor: number;
+  grossExpenseMinor: number;
+  shareRatio: number;
+  transactionCount: number;
+  categories: UnexpectedCategoryAnalyticsItem[];
+}
+
 export interface MerchantAnalyticsItem {
   merchant: string;
   netSpentMinor: number;
@@ -98,6 +125,7 @@ export interface MerchantAnalyticsItem {
 export interface MonthAnalytics {
   budget: MonthlyBudgetSummary;
   categories: CategoryAnalyticsItem[];
+  unexpected: UnexpectedExpenseAnalytics;
   merchants: MerchantAnalyticsItem[];
   spendingDayCount: number;
   averagePerSpendingDayMinor: number;
@@ -429,6 +457,132 @@ export function calculateCategoryAnalytics(
     );
 }
 
+export function calculateUnexpectedExpenseAnalytics(
+  input: CategoryAnalyticsInput,
+): UnexpectedExpenseAnalytics {
+  if (!isMonthKey(input.month)) {
+    throw new Error(`Invalid month key: ${input.month}`);
+  }
+
+  type SubcategoryBucket = {
+    amountMinor: number;
+    transactionCount: number;
+  };
+  type CategoryBucket = {
+    amountMinor: number;
+    transactionCount: number;
+    subcategories: Map<string, SubcategoryBucket>;
+  };
+
+  const categories = input.categories ?? CATEGORY_DEFINITIONS;
+  const buckets = new Map<CategoryId, CategoryBucket>();
+  let grossExpenseMinor = 0;
+
+  for (const transaction of input.transactions) {
+    const impact = getSpendingImpactMinor(transaction, input.currency);
+    if (
+      transaction.kind !== 'expense' ||
+      impact === 0 ||
+      !transactionIsInMonth(transaction, input.month)
+    ) {
+      continue;
+    }
+
+    grossExpenseMinor += impact;
+    if (transaction.isUnexpected !== true) {
+      continue;
+    }
+
+    const category =
+      buckets.get(transaction.categoryId) ?? {
+        amountMinor: 0,
+        transactionCount: 0,
+        subcategories: new Map<string, SubcategoryBucket>(),
+      };
+    category.amountMinor += impact;
+    category.transactionCount += 1;
+
+    const subcategoryKey = transaction.subcategoryId ?? '';
+    const subcategory =
+      category.subcategories.get(subcategoryKey) ?? {
+        amountMinor: 0,
+        transactionCount: 0,
+      };
+    subcategory.amountMinor += impact;
+    subcategory.transactionCount += 1;
+    category.subcategories.set(subcategoryKey, subcategory);
+    buckets.set(transaction.categoryId, category);
+  }
+
+  const amountMinor = Array.from(buckets.values()).reduce(
+    (total, bucket) => total + bucket.amountMinor,
+    0,
+  );
+  const categoryItems = categories.flatMap((definition) => {
+    const bucket = buckets.get(definition.id);
+    if (!bucket) {
+      return [];
+    }
+
+    const subcategories = Array.from(bucket.subcategories.entries())
+      .sort(
+        ([, left], [, right]) =>
+          right.amountMinor - left.amountMinor ||
+          right.transactionCount - left.transactionCount,
+      )
+      .map(([subcategoryId, subcategory]) => {
+        const normalizedSubcategoryId = subcategoryId || null;
+        const label = normalizedSubcategoryId
+          ? definition.subcategories.find(
+              (item) => item.id === normalizedSubcategoryId,
+            )?.label ?? '其他子分类'
+          : '未细分';
+        return {
+          subcategoryId: normalizedSubcategoryId,
+          label,
+          amountMinor: subcategory.amountMinor,
+          shareRatio:
+            bucket.amountMinor > 0
+              ? subcategory.amountMinor / bucket.amountMinor
+              : 0,
+          transactionCount: subcategory.transactionCount,
+        } satisfies UnexpectedSubcategoryAnalyticsItem;
+      });
+
+    return [
+      {
+        categoryId: definition.id,
+        label: definition.label,
+        color: definition.color,
+        icon: definition.icon,
+        amountMinor: bucket.amountMinor,
+        shareRatio: amountMinor > 0 ? bucket.amountMinor / amountMinor : 0,
+        transactionCount: bucket.transactionCount,
+        subcategories,
+      } satisfies UnexpectedCategoryAnalyticsItem,
+    ];
+  });
+
+  categoryItems.sort(
+    (left, right) =>
+      right.amountMinor - left.amountMinor ||
+      categories.findIndex((category) => category.id === left.categoryId) -
+        categories.findIndex((category) => category.id === right.categoryId),
+  );
+
+  return {
+    amountMinor,
+    grossExpenseMinor,
+    shareRatio:
+      grossExpenseMinor > 0 ? amountMinor / grossExpenseMinor : 0,
+    transactionCount: Array.from(buckets.values()).reduce(
+      (total, bucket) => total + bucket.transactionCount,
+      0,
+    ),
+    categories: categoryItems,
+  };
+}
+
 export function calculateMerchantAnalytics(
   transactions: readonly Transaction[],
   month: MonthKey,
@@ -490,6 +644,12 @@ export function calculateMonthAnalytics(
     categories: categoryDefinitions,
     categoryBudgetsMinor,
   });
+  const unexpected = calculateUnexpectedExpenseAnalytics({
+    transactions: budgetInput.transactions,
+    month: budgetInput.month,
+    currency: budgetInput.currency,
+    categories: categoryDefinitions,
+  });
   const merchants = calculateMerchantAnalytics(
     budgetInput.transactions,
     budgetInput.month,
@@ -516,6 +676,7 @@ export function calculateMonthAnalytics(
   return {
     budget,
     categories,
+    unexpected,
     merchants,
     spendingDayCount,
     averagePerSpendingDayMinor:

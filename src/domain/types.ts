@@ -118,6 +118,8 @@ export interface Transaction {
    */
   amountMinor: number;
   currency: CurrencyCode;
+  /** User-marked spending that was outside the planned budget. */
+  isUnexpected?: boolean;
   /**
    * Calendar date used for grouping. It intentionally has no timezone.
    */
@@ -212,6 +214,7 @@ export interface TransactionDraft {
   status: TransactionStatus | null;
   amountMinor: number | null;
   currency: CurrencyCode | null;
+  isUnexpected?: boolean;
   date: LocalDate | null;
   time: LocalTime | null;
   merchant: string;
@@ -246,6 +249,8 @@ export interface TransactionDraftInput {
   status?: unknown;
   amount?: unknown;
   amountMinor?: unknown;
+  isUnexpected?: unknown;
+  unexpected?: unknown;
   currency?: unknown;
   date?: unknown;
   time?: unknown;

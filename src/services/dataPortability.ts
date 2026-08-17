@@ -205,6 +205,9 @@ function validateTransaction(
   expectEnum(transaction.status, transactionStatuses, `${path}.status`);
   expectSafeInteger(transaction.amountMinor, `${path}.amountMinor`, { minimum: 1 });
   expectString(transaction.currency, `${path}.currency`, { maximumLength: 16 });
+  if (transaction.isUnexpected !== undefined) {
+    expectBoolean(transaction.isUnexpected, `${path}.isUnexpected`);
+  }
   expectLocalDate(transaction.date, `${path}.date`);
   if (transaction.time !== undefined && !isLocalTime(transaction.time)) {
     validationError(`${path}.time`, '应为有效的 HH:mm:ss 时间。');

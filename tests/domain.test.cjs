@@ -246,6 +246,39 @@ describe('draft confirmation and duplicate detection', () => {
     assert.equal(result.transaction.categoryId, 'food');
   });
 
+  test('preserves a manual unexpected-spending marker for expenses only', () => {
+    const draft = domain.normalizeTransactionDraft(
+      {
+        ...domain.createDemoDraft(REFERENCE_DATE),
+        isUnexpected: true,
+      },
+      {
+        defaultCurrency: 'CNY',
+        defaultDate: REFERENCE_DATE,
+        defaultStatus: 'confirmed',
+      },
+    );
+    const expense = domain.confirmTransactionDraft(draft);
+    assert.equal(expense.ok, true);
+    assert.equal(expense.transaction.isUnexpected, true);
+
+    const refundDraft = domain.normalizeTransactionDraft(
+      {
+        ...domain.createDemoDraft(REFERENCE_DATE),
+        kind: 'refund',
+        isUnexpected: true,
+      },
+      {
+        defaultCurrency: 'CNY',
+        defaultDate: REFERENCE_DATE,
+        defaultStatus: 'confirmed',
+      },
+    );
+    const refund = domain.confirmTransactionDraft(refundDraft);
+    assert.equal(refund.ok, true);
+    assert.equal(refund.transaction.isUnexpected, undefined);
+  });
+
   test('keeps seconds from a full Alipay transaction datetime', () => {
     const draft = domain.normalizeTransactionDraft(
       {
@@ -667,6 +700,53 @@ describe('analytics', () => {
     );
     assert.equal(categories[0].label, '工作工具');
     assert.equal(categories[0].netSpentMinor, 8_800);
+  });
+
+  test('summarizes unexpected spending by category and subcategory', () => {
+    const base = dataset.transactions.find(
+      (transaction) =>
+        transaction.status === 'confirmed' &&
+        transaction.kind === 'expense' &&
+        transaction.currency === 'CNY' &&
+        transaction.date.startsWith(REFERENCE_MONTH),
+    );
+    assert.ok(base);
+
+    const unexpected = domain.calculateUnexpectedExpenseAnalytics({
+      transactions: [
+        { ...base, id: 'txn_planned', amountMinor: 2_000, categoryId: 'meals' },
+        {
+          ...base,
+          id: 'txn_unexpected_meals',
+          amountMinor: 1_000,
+          categoryId: 'meals',
+          subcategoryId: 'coffee',
+          isUnexpected: true,
+        },
+        {
+          ...base,
+          id: 'txn_unexpected_tools',
+          amountMinor: 3_000,
+          categoryId: 'work_tools',
+          subcategoryId: 'hosting',
+          isUnexpected: true,
+        },
+      ],
+      month: REFERENCE_MONTH,
+      currency: 'CNY',
+      categories: CUSTOM_CATEGORIES,
+    });
+
+    assert.equal(unexpected.grossExpenseMinor, 6_000);
+    assert.equal(unexpected.amountMinor, 4_000);
+    assert.equal(unexpected.shareRatio, 4 / 6);
+    assert.equal(unexpected.transactionCount, 2);
+    assert.deepEqual(
+      unexpected.categories.map((category) => category.categoryId),
+      ['work_tools', 'meals'],
+    );
+    assert.equal(unexpected.categories[0].subcategories[0].label, '托管服务');
+    assert.equal(unexpected.categories[1].subcategories[0].label, '咖啡');
   });
 });
 
