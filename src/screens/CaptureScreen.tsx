@@ -24,6 +24,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '../components/AppButton';
+import { CheckboxRow } from '../components/CheckboxRow';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
 import { DuplicateWarning } from '../components/DuplicateWarning';
 import { FormField } from '../components/FormField';
@@ -147,11 +148,6 @@ const kindOptions: Array<ChoiceOption<TransactionKind>> =
     value,
     label: TRANSACTION_KIND_LABELS[value],
   }));
-
-const unexpectedOptions: Array<ChoiceOption<'normal' | 'unexpected'>> = [
-  { value: 'normal', label: '普通支出' },
-  { value: 'unexpected', label: '预期外支出' },
-];
 
 const statusOptions: Array<ChoiceOption<TransactionStatus>> =
   TRANSACTION_STATUSES.map((value) => ({
@@ -2174,24 +2170,18 @@ export function CaptureScreen({
             testID="capture-kind"
           />
           {draft.kind === 'expense' ? (
-            <>
-              <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>支出标记</Text>
-              <ChoiceChips
-                theme={theme}
-                value={draft.isUnexpected ? 'unexpected' : 'normal'}
-                options={unexpectedOptions}
-                onChange={(value) =>
-                  updateDraft({
-                    isUnexpected: value === 'unexpected' ? true : undefined,
-                  })
-                }
-                scrollable={false}
-                testID="capture-unexpected"
-              />
-              <Text style={[styles.help, { color: theme.colors.textMuted }]}>
-                标记后仍会计入预算，但会在统计中单独汇总并按分类细分。
-              </Text>
-            </>
+            <CheckboxRow
+              theme={theme}
+              title="预期外款项"
+              detail="勾选后仍会计入预算，并在统计中单独汇总和按分类细分。"
+              value={draft.isUnexpected === true}
+              onChange={(value) =>
+                updateDraft({
+                  isUnexpected: value ? true : undefined,
+                })
+              }
+              testID="capture-unexpected"
+            />
           ) : null}
           <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
             交易状态

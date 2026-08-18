@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
+import { CheckboxRow } from '../components/CheckboxRow';
 import {
   TRANSACTION_KIND_LABELS,
   TRANSACTION_STATUS_LABELS,
@@ -86,10 +87,6 @@ const fundingTypeOptions: Array<ChoiceOption<FundingInstrumentType>> =
 
 const NO_RECURRING_EXPENSE = '__none__';
 const NO_SUBCATEGORY = '__none__';
-const unexpectedOptions: Array<ChoiceOption<'normal' | 'unexpected'>> = [
-  { value: 'normal', label: '普通支出' },
-  { value: 'unexpected', label: '预期外支出' },
-];
 
 export function TransactionEditScreen({
   theme,
@@ -609,6 +606,16 @@ export function TransactionEditScreen({
           }}
           testID="edit-kind"
         />
+        {kind === 'expense' ? (
+          <CheckboxRow
+            theme={theme}
+            title="预期外款项"
+            detail="勾选后仍会计入预算，并在统计中单独汇总和按分类细分。"
+            value={isUnexpected}
+            onChange={setIsUnexpected}
+            testID="edit-unexpected"
+          />
+        ) : null}
         <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>交易状态</Text>
         <ChoiceChips
           theme={theme}
@@ -618,22 +625,6 @@ export function TransactionEditScreen({
           scrollable={false}
           testID="edit-status"
         />
-        {kind === 'expense' ? (
-          <>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>支出标记</Text>
-            <ChoiceChips
-              theme={theme}
-              value={isUnexpected ? 'unexpected' : 'normal'}
-              options={unexpectedOptions}
-              onChange={(value) => setIsUnexpected(value === 'unexpected')}
-              scrollable={false}
-              testID="edit-unexpected"
-            />
-            <Text style={[styles.help, { color: theme.colors.textMuted }]}>
-              标记后仍会计入预算，但会在统计中单独汇总并按分类细分。
-            </Text>
-          </>
-        ) : null}
         <Text style={[styles.help, { color: theme.colors.textMuted }]}>
           只有“已确认”的支出与退款会影响预算；转账、还款和投资不会计入消费。
         </Text>
