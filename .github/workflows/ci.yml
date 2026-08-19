@@ -192,8 +192,42 @@ jobs:
           }
           GRADLE
 
+      - name: Stabilize Maven dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          // Expo Updates 57.0.12 requests this dependency as [1.81, 1.82).
+          configurations.configureEach {
+            resolutionStrategy.force 'org.bouncycastle:bcprov-jdk15to18:1.81'
+          }
+          GRADLE
+
       - name: Build Android artifact
-        run: ./gradlew assembleRelease --no-daemon --stacktrace --info --console=plain
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Gradle release build attempt ${attempt}/3"
+            log_file="$RUNNER_TEMP/gradle-release-${attempt}.log"
+            gradle_args=(assembleRelease --no-daemon --stacktrace --info --console=plain)
+            if [[ "$attempt" -gt 1 ]]; then
+              gradle_args+=(--refresh-dependencies)
+            fi
+            if ./gradlew "${gradle_args[@]}" 2>&1 | tee "$log_file"; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              exit 1
+            fi
+            if ! grep -Eiq 'Could not resolve|MavenRepo is disabled|Could not (GET|HEAD)|Connection (reset|timed out)|timed out|502|503|504' "$log_file"; then
+              echo 'Gradle failed for a non-repository reason; not retrying.' >&2
+              exit 1
+            fi
+            echo 'Gradle dependency resolution failed; retrying with refreshed dependencies.' >&2
+            sleep 10
+          done
         working-directory: android
 
       - name: Package Android artifact
