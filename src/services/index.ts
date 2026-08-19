@@ -5,3 +5,4 @@ export * from './media';
 export * from './secureKey';
 export * from './nativeScreenCapture';
 export * from './appUpdates';
+export * from './appInstallation';

@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const manifest = require('../.test-build-tests/services/updateManifest.js');
 
@@ -42,4 +44,20 @@ test('rejects prerelease and malformed release tags', () => {
   );
   assert.equal(manifest.isValidGitHubRepository('stevennight/NyaAccounting'), true);
   assert.equal(manifest.isValidGitHubRepository('not-a-repository'), false);
+});
+
+test('keeps Android APK installation permission in the built app inputs', () => {
+  const appConfig = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', 'app.json'), 'utf8'),
+  );
+  const androidManifest = fs.readFileSync(
+    path.join(__dirname, '..', 'android', 'app', 'src', 'main', 'AndroidManifest.xml'),
+    'utf8',
+  );
+
+  assert.ok(appConfig.expo.android.permissions.includes('REQUEST_INSTALL_PACKAGES'));
+  assert.match(
+    androidManifest,
+    /android\.permission\.REQUEST_INSTALL_PACKAGES/,
+  );
 });

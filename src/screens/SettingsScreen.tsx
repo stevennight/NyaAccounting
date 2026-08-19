@@ -186,6 +186,7 @@ function SettingsNavigationRow({
   detail,
   onPress,
   testID,
+  isLast = false,
 }: {
   theme: AppTheme;
   icon: ComponentProps<typeof Ionicons>['name'];
@@ -193,6 +194,7 @@ function SettingsNavigationRow({
   detail: string;
   onPress: () => void;
   testID: string;
+  isLast?: boolean;
 }) {
   return (
     <Pressable
@@ -203,10 +205,10 @@ function SettingsNavigationRow({
       style={({ pressed }) => [
         styles.navigationRow,
         {
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
           opacity: pressed ? 0.72 : 1,
+          borderBottomColor: theme.colors.border,
         },
+        isLast && styles.navigationRowLast,
       ]}
     >
       <View style={[styles.navigationIcon, { backgroundColor: theme.colors.primarySoft }]}>
@@ -947,46 +949,57 @@ export function SettingsScreen({
       {section === 'home' ? (
         <View style={styles.section}>
           <SectionHeader title="设置分类" subtitle="选择要调整的内容" theme={theme} />
-          <SettingsNavigationRow
-            theme={theme}
-            icon="wallet-outline"
-            title="预算与外观"
-            detail={`月度预算${settings.monthlyBudgetMinor > 0 ? ` ${minorToMajor(settings.monthlyBudgetMinor, settings.currency)}` : '未设置'} · ${settings.theme === 'system' ? '跟随系统' : settings.theme === 'light' ? '浅色' : '深色'}`}
-            onPress={() => onOpenSection?.('budget')}
-            testID="settings-section-budget"
-          />
-          <SettingsNavigationRow
-            theme={theme}
-            icon="book-outline"
-            title="账本设置"
-            detail={`${settings.categories.length} 个分类 · ${settings.paymentChannels.length} 个支付渠道 · ${dataset.recurringExpenses.length} 个固定支出`}
-            onPress={() => onOpenSection?.('ledger')}
-            testID="settings-section-ledger"
-          />
-          <SettingsNavigationRow
-            theme={theme}
-            icon="sparkles-outline"
-            title="AI 识别"
-            detail={settings.ai.enabled ? `已启用 · 最大并发 ${settings.ai.maxConcurrentRecognitions}` : '未启用'}
-            onPress={() => onOpenSection?.('ai')}
-            testID="settings-section-ai"
-          />
-          <SettingsNavigationRow
-            theme={theme}
-            icon="phone-portrait-outline"
-            title="系统与更新"
-            detail={`当前版本 v${CURRENT_APP_VERSION}`}
-            onPress={() => onOpenSection?.('system')}
-            testID="settings-section-system"
-          />
-          <SettingsNavigationRow
-            theme={theme}
-            icon="cloud-outline"
-            title="数据管理"
-            detail={`${dataset.transactions.length} 笔账目 · 本地备份与清理`}
-            onPress={() => onOpenSection?.('data')}
-            testID="settings-section-data"
-          />
+          <View
+            style={[
+              styles.navigationList,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <SettingsNavigationRow
+              theme={theme}
+              icon="wallet-outline"
+              title="预算与外观"
+              detail={`月度预算${settings.monthlyBudgetMinor > 0 ? ` ${minorToMajor(settings.monthlyBudgetMinor, settings.currency)}` : '未设置'} · ${settings.theme === 'system' ? '跟随系统' : settings.theme === 'light' ? '浅色' : '深色'}`}
+              onPress={() => onOpenSection?.('budget')}
+              testID="settings-section-budget"
+            />
+            <SettingsNavigationRow
+              theme={theme}
+              icon="book-outline"
+              title="账本设置"
+              detail={`${settings.categories.length} 个分类 · ${settings.paymentChannels.length} 个支付渠道 · ${dataset.recurringExpenses.length} 个固定支出`}
+              onPress={() => onOpenSection?.('ledger')}
+              testID="settings-section-ledger"
+            />
+            <SettingsNavigationRow
+              theme={theme}
+              icon="sparkles-outline"
+              title="AI 识别"
+              detail={settings.ai.enabled ? `已启用 · 最大并发 ${settings.ai.maxConcurrentRecognitions}` : '未启用'}
+              onPress={() => onOpenSection?.('ai')}
+              testID="settings-section-ai"
+            />
+            <SettingsNavigationRow
+              theme={theme}
+              icon="phone-portrait-outline"
+              title="系统与更新"
+              detail={`当前版本 v${CURRENT_APP_VERSION}`}
+              onPress={() => onOpenSection?.('system')}
+              testID="settings-section-system"
+            />
+            <SettingsNavigationRow
+              theme={theme}
+              icon="cloud-outline"
+              title="数据管理"
+              detail={`${dataset.transactions.length} 笔账目 · 本地备份与清理`}
+              onPress={() => onOpenSection?.('data')}
+              testID="settings-section-data"
+              isLast
+            />
+          </View>
         </View>
       ) : null}
 
@@ -1480,14 +1493,22 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xxl,
     gap: spacing.lg,
   },
-  navigationRow: {
-    minHeight: 76,
+  navigationList: {
     borderWidth: 1,
     borderRadius: radii.md,
-    padding: spacing.md,
+    overflow: 'hidden',
+  },
+  navigationRow: {
+    minHeight: 70,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+  },
+  navigationRowLast: {
+    borderBottomWidth: 0,
   },
   navigationIcon: {
     width: 42,

@@ -106,10 +106,7 @@ export function BottomNav({ activeTab, onChange, theme }: BottomNavProps) {
 
 const styles = StyleSheet.create({
   wrapper: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flexShrink: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: spacing.sm,
   },

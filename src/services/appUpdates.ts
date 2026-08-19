@@ -7,6 +7,7 @@ import {
   parseGitHubRelease,
   type GitHubReleaseInfo,
 } from './updateManifest';
+import { canRequestPackageInstalls } from './appInstallation';
 
 const currentVersion = Constants.expoConfig?.version ?? '0.0.0';
 
@@ -117,6 +118,20 @@ export async function downloadAndInstallGitHubApk(
 
   const FileSystem = await import('expo-file-system/legacy');
   const IntentLauncher = await import('expo-intent-launcher');
+  const installPermissionGranted = await canRequestPackageInstalls();
+  if (!installPermissionGranted) {
+    const packageName = Constants.expoConfig?.android?.package;
+    if (!packageName) {
+      throw new Error('无法定位当前应用，不能打开安装权限设置。');
+    }
+    await IntentLauncher.startActivityAsync(
+      IntentLauncher.ActivityAction.MANAGE_UNKNOWN_APP_SOURCES,
+      { data: `package:${packageName}` },
+    );
+    if (!(await canRequestPackageInstalls())) {
+      throw new Error('请在系统设置中允许 Nya 记账安装未知来源应用后再重试。');
+    }
+  }
   if (!FileSystem.cacheDirectory) {
     throw new Error('当前设备没有可用的临时文件目录。');
   }

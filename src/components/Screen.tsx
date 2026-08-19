@@ -42,7 +42,7 @@ export function Screen({
         {
           paddingTop: Math.max(insets.top, spacing.lg),
           paddingBottom:
-            (bottomNavigation ? 104 : spacing.xl) + insets.bottom,
+            (bottomNavigation ? spacing.lg : spacing.xl) + insets.bottom,
         },
         contentStyle,
       ]}
@@ -60,7 +60,7 @@ export function Screen({
         {
           paddingTop: Math.max(insets.top, spacing.lg),
           paddingBottom:
-            (bottomNavigation ? 84 : spacing.xl) + insets.bottom,
+            (bottomNavigation ? spacing.lg : spacing.xl) + insets.bottom,
         },
         contentStyle,
       ]}

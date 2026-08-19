@@ -118,13 +118,15 @@ jobs:
       - name: Generate native Android project
         run: npm exec expo -- prebuild --platform android --no-install
 
-      - name: Restore custom Android screenshot integration
+      - name: Restore custom Android integration
         shell: bash
         run: |
           set -euo pipefail
           git restore --source=HEAD -- \
             android/app/src/main/AndroidManifest.xml \
             android/app/src/main/java/app/nya/accounting/MainApplication.kt \
+            android/app/src/main/java/app/nya/accounting/AppUpdateModule.kt \
+            android/app/src/main/java/app/nya/accounting/AppUpdatePackage.kt \
             android/app/src/main/java/app/nya/accounting/ScreenCaptureAccessibilityService.kt \
             android/app/src/main/java/app/nya/accounting/ScreenCaptureActionReceiver.kt \
             android/app/src/main/java/app/nya/accounting/ScreenCaptureModule.kt \

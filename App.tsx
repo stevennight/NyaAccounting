@@ -180,7 +180,8 @@ function AppContent() {
       goBack();
       return true;
     },
-    currentRoute.type === 'tab',
+    true,
+    -1,
   );
 
   const openCapture = () => {
@@ -211,6 +212,10 @@ function AppContent() {
       ...current,
       { type: 'transaction', transactionId: transaction.id },
     ]);
+  };
+
+  const openSettingsSection = (section: SettingsDetailSection) => {
+    setRoutes((current) => [...current, { type: 'settings', section }]);
   };
 
   const saveTransaction = async (transaction: Transaction) => {
@@ -320,9 +325,7 @@ function AppContent() {
         theme={theme}
         section={currentRoute.section}
         onBack={goBack}
-        onOpenSection={(section) =>
-          setRoutes((current) => [...current, { type: 'settings', section }])
-        }
+        onOpenSection={openSettingsSection}
         onOpenCategories={() =>
           setRoutes((current) => [
             ...current,
@@ -397,9 +400,7 @@ function AppContent() {
         content = (
           <SettingsScreen
             theme={theme}
-            onOpenSection={(section) =>
-              setRoutes((current) => [...current, { type: 'settings', section }])
-            }
+            onOpenSection={openSettingsSection}
             onOpenCategories={() =>
               setRoutes((current) => [
                 ...current,

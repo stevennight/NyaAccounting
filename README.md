@@ -68,7 +68,7 @@ npm run android:keystore
 
 脚本会在 `android/keystores/nya-accounting-release.jks` 保存主文件，在 `.workspace/release/android/` 保存备份，并写入 `android/key.properties` 供本地 Release 构建使用。GitHub Actions 仍需把同一个 keystore 转成 Base64 写入 `ANDROID_KEYSTORE_BASE64`；不要重新生成或替换这份 keystore。
 
-GitHub Actions 会把当前仓库名注入安装包，应用因此检查该仓库的最新 Release；本地构建可设置 `NYA_ACCOUNTING_GITHUB_REPOSITORY=owner/repository` 来启用同样的检查。Android 用户点击更新后会下载 APK 并打开系统安装器，首次使用可能需要允许 Nya 记账安装未知来源应用。Expo Updates 入口用于已配置更新服务的原生包，不能替代包含原生模块变更的 APK 发布。
+GitHub Actions 会把当前仓库名注入安装包，应用因此检查该仓库的最新 Release；本地构建可设置 `NYA_ACCOUNTING_GITHUB_REPOSITORY=owner/repository` 来启用同样的检查。Android 用户点击更新后，如果尚未允许 Nya 记账安装未知来源应用，应用会先打开对应的系统授权页；用户开启后返回应用，会继续下载并打开 APK 安装器。Expo Updates 入口用于已配置更新服务的原生包，不能替代包含原生模块变更的 APK 发布。
 
 ## AI 配置
 
