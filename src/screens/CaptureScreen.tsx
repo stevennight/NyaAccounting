@@ -2485,7 +2485,7 @@ export function CaptureScreen({
                     onChangeText={updateActiveImageText}
                     multiline
                     placeholder="例如：这笔是软件激活码"
-                    hint="AI 会把这段文字与当前截图一起整理成消费内容。"
+                    hint="这段文字是你的事实补充；如与截图中的转账收款人冲突，AI 会优先按你的实际消费用途记录。"
                     testID="capture-image-text"
                   />
                 </View>
@@ -2519,7 +2519,7 @@ export function CaptureScreen({
             onChangeText={updateTextInputFromUser}
             multiline
             placeholder="例如：今天午餐 32 元，微信支付"
-            hint="没有截图时，也可以只填写文字。"
+            hint="没有截图时，也可以只填写文字；有截图时，文字补充会优先作为你的事实说明。"
             testID="capture-text"
           />
         </View> : null}

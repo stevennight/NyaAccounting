@@ -3,7 +3,7 @@
     "name": "Nya 记账",
     "slug": "nya-accounting",
     "scheme": "nyaaccounting",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "extra": {
       "githubRepository": null
     },
@@ -19,14 +19,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.nya.accounting",
-      "buildNumber": "1000006",
+      "buildNumber": "1000007",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "用于选择消费截图并生成记账草稿。"
       }
     },
     "android": {
       "package": "app.nya.accounting",
-      "versionCode": 1000006,
+      "versionCode": 1000007,
       "permissions": [
         "REQUEST_INSTALL_PACKAGES"
       ],

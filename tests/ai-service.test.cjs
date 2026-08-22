@@ -401,6 +401,56 @@ describe('AI extraction compatibility', () => {
     );
   });
 
+  test('gives explicit consumption clarification precedence over a transfer screenshot', async () => {
+    let requestBody;
+    const fetcher = async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return response(
+        completionResponse(
+          extractedTransaction({
+            kind: 'transfer',
+            merchant: '昌庆',
+            description: '转账给昌庆',
+            categoryId: 'other',
+            reviewFields: ['kind', 'merchant', 'description', 'categoryId'],
+            needsReview: true,
+            reviewReasons: [
+              '截图明确显示为转账，但补充文本为麦当劳午餐，交易用途与收款方存在冲突。',
+            ],
+          }),
+        ),
+      );
+    };
+    const service = createAiService({ ...baseConfig, fetcher });
+    const screenshot = {
+      uri: 'file:///transfer.jpg',
+      mimeType: 'image/jpeg',
+      base64: 'AQ==',
+      dataUrl: 'data:image/jpeg;base64,AQ==',
+      width: 1,
+      height: 1,
+      approximateBytes: 1,
+    };
+
+    const result = await service.extractTransaction({
+      screenshot,
+      text: '麦当劳午餐',
+    });
+
+    assert.equal(result.kind, 'expense');
+    assert.equal(result.merchant, '麦当劳');
+    assert.equal(result.description, '麦当劳午餐');
+    assert.equal(result.categoryId, 'food');
+    assert.equal(result.subcategoryId, 'dining');
+    assert.equal(result.review.required, false);
+    assert.equal(
+      result.review.reasons.some((reason) => /交易用途与收款方存在冲突/.test(reason)),
+      false,
+    );
+    assert.match(requestBody.messages[0].content, /highest priority/i);
+    assert.match(requestBody.messages[1].content[0].text, /麦当劳午餐/);
+  });
+
   test('falls back from json_schema to json_object and then prompt-only JSON', async () => {
     const calls = [];
     const fetcher = async (_url, init) => {
