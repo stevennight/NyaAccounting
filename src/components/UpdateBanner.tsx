@@ -1,4 +1,5 @@
 import { Platform, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { GitHubReleaseInfo } from '../services/updateManifest';
 import { AppButton } from './AppButton';
@@ -27,6 +28,7 @@ export function UpdateBanner({
   onApplyOta,
   onDismiss,
 }: UpdateBannerProps) {
+  const insets = useSafeAreaInsets();
   const hasApk = Boolean(release?.apkAsset);
   const canInstallApk = Platform.OS === 'android';
   return (
@@ -36,6 +38,7 @@ export function UpdateBanner({
         {
           backgroundColor: theme.colors.surface,
           borderBottomColor: theme.colors.border,
+          paddingTop: insets.top + spacing.md,
         },
       ]}
     >
@@ -88,7 +91,7 @@ const styles = StyleSheet.create({
   container: {
     borderBottomWidth: 1,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingBottom: spacing.md,
     gap: spacing.md,
   },
   copy: {
