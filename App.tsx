@@ -380,6 +380,7 @@ function AppContent() {
             onCapture={openCapture}
             onOpenSettings={() => changeDestination('settings')}
             onOpenStats={() => changeDestination('stats')}
+            onOpenRecords={() => changeDestination('records')}
             onOpenTransaction={openTransaction}
           />
         );

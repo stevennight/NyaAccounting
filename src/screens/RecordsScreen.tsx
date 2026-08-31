@@ -12,11 +12,11 @@ import { useAppStore } from '../store/AppStore';
 import { AppTheme, radii, spacing, typography } from '../theme';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
 import { EmptyState } from '../components/EmptyState';
-import { FormField } from '../components/FormField';
 import { IconButton } from '../components/IconButton';
 import { InlineNotice } from '../components/InlineNotice';
 import { PageHeader } from '../components/PageHeader';
 import { Screen } from '../components/Screen';
+import { SearchField } from '../components/SearchField';
 import { TransactionRow } from '../components/TransactionRow';
 
 type RecordFilter = 'all' | TransactionKind;
@@ -39,6 +39,14 @@ type RecordsScreenProps = {
 function monthLabel(month: string): string {
   const [year, numericMonth] = month.split('-');
   return `${year} 年 ${Number(numericMonth)} 月`;
+}
+
+function dateLabel(date: string): string {
+  const [, month, day] = date.split('-').map(Number);
+  const weekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(
+    new Date(`${date}T12:00:00`),
+  );
+  return `${month} 月 ${day} 日 · ${weekday}`;
 }
 
 export function RecordsScreen({
@@ -84,24 +92,33 @@ export function RecordsScreen({
   ).length;
 
   const grouped = useMemo(() => {
-    const groups: Array<{ date: string; rows: Transaction[] }> = [];
+    const groups: Array<{ date: string; rows: Transaction[]; netMinor: number }> = [];
     for (const transaction of visibleTransactions) {
+      const impact = getSpendingImpactMinor(
+        transaction,
+        dataset.settings.currency,
+      );
       const current = groups[groups.length - 1];
       if (!current || current.date !== transaction.date) {
-        groups.push({ date: transaction.date, rows: [transaction] });
+        groups.push({
+          date: transaction.date,
+          rows: [transaction],
+          netMinor: impact,
+        });
       } else {
         current.rows.push(transaction);
+        current.netMinor += impact;
       }
     }
     return groups;
-  }, [visibleTransactions]);
+  }, [dataset.settings.currency, visibleTransactions]);
 
   return (
     <Screen theme={theme} testID="records-screen">
       <PageHeader
         theme={theme}
         title="账目"
-        subtitle="只记录消费事实，不维护账户余额"
+        subtitle="按月份查找与管理记录"
         action={
           <IconButton
             theme={theme}
@@ -113,7 +130,12 @@ export function RecordsScreen({
         }
       />
 
-      <View style={styles.monthSwitcher}>
+      <View
+        style={[
+          styles.monthSwitcher,
+          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        ]}
+      >
         <IconButton
           theme={theme}
           icon="chevron-back"
@@ -137,7 +159,12 @@ export function RecordsScreen({
       >
         <View>
           <Text style={[styles.summaryLabel, { color: theme.colors.textMuted }]}>本页净消费</Text>
-          <Text style={[styles.summaryValue, { color: theme.colors.text }]}>
+          <Text
+            style={[styles.summaryValue, { color: theme.colors.text }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+          >
             {formatMoneyMinor(Math.max(netSpendingMinor, 0), dataset.settings.currency)}
           </Text>
         </View>
@@ -166,13 +193,12 @@ export function RecordsScreen({
           options={filterOptions}
           onChange={setFilter}
         />
-        <FormField
+        <SearchField
           theme={theme}
-          label="搜索"
           value={query}
           onChangeText={setQuery}
           placeholder="商户、备注或标签"
-          returnKeyType="search"
+          accessibilityLabel="搜索账目"
           testID="records-search"
         />
       </View>
@@ -190,9 +216,17 @@ export function RecordsScreen({
         <View style={styles.groups}>
           {grouped.map((group) => (
             <View key={group.date}>
-              <Text style={[styles.dateHeading, { color: theme.colors.textMuted }]}>
-                {group.date.slice(5).replace('-', ' 月 ')} 日
-              </Text>
+              <View style={styles.dateHeader}>
+                <Text style={[styles.dateHeading, { color: theme.colors.textMuted }]}>
+                  {dateLabel(group.date)}
+                </Text>
+                <Text style={[styles.dateTotal, { color: theme.colors.text }]}>
+                  {formatMoneyMinor(
+                    Math.max(group.netMinor, 0),
+                    dataset.settings.currency,
+                  )}
+                </Text>
+              </View>
               <View
                 style={[
                   styles.group,
@@ -220,10 +254,14 @@ export function RecordsScreen({
 
 const styles = StyleSheet.create({
   monthSwitcher: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.xs,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   month: {
     fontSize: typography.sectionTitle,
@@ -254,7 +292,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   filters: {
-    gap: spacing.lg,
+    gap: spacing.md,
     marginBottom: spacing.xl,
   },
   notice: {
@@ -264,9 +302,22 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   dateHeading: {
+    flex: 1,
     fontSize: typography.caption,
     fontWeight: '700',
-    marginBottom: spacing.sm,
+  },
+  dateHeader: {
+    minHeight: 28,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  dateTotal: {
+    fontSize: typography.caption,
+    fontWeight: '800',
   },
   group: {
     borderWidth: 1,

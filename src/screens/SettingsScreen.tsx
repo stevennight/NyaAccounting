@@ -170,6 +170,8 @@ function SwitchRow({
         <Text style={[styles.switchDetail, { color: theme.colors.textMuted }]}>{detail}</Text>
       </View>
       <Switch
+        accessibilityLabel={title}
+        accessibilityHint={detail}
         value={value}
         onValueChange={onChange}
         trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.primarySoft }}
@@ -205,7 +207,7 @@ function SettingsNavigationRow({
       style={({ pressed }) => [
         styles.navigationRow,
         {
-          opacity: pressed ? 0.72 : 1,
+          backgroundColor: pressed ? theme.colors.surfaceMuted : 'transparent',
           borderBottomColor: theme.colors.border,
         },
         isLast && styles.navigationRowLast,
@@ -935,7 +937,7 @@ export function SettingsScreen({
       <PageHeader
         theme={theme}
         title={section === 'home' ? '设置' : settingsSectionTitle(section)}
-        subtitle={section === 'home' ? '预算、AI 与本地数据' : settingsSectionSubtitle(section)}
+        subtitle={section === 'home' ? '管理预算、识别与本地数据' : settingsSectionSubtitle(section)}
         onBack={section === 'home' ? undefined : onBack}
         backLabel="返回设置"
       />
@@ -948,7 +950,7 @@ export function SettingsScreen({
 
       {section === 'home' ? (
         <View style={styles.section}>
-          <SectionHeader title="设置分类" subtitle="选择要调整的内容" theme={theme} />
+          <SectionHeader title="通用" theme={theme} />
           <View
             style={[
               styles.navigationList,
@@ -1499,7 +1501,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   navigationRow: {
-    minHeight: 70,
+    minHeight: 74,
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

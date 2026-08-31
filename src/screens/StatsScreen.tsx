@@ -123,10 +123,15 @@ export function StatsScreen({ theme }: StatsScreenProps) {
       <PageHeader
         theme={theme}
         title="统计"
-        subtitle="分类占比与消费趋势"
+        subtitle="看清本月消费结构与变化"
       />
 
-      <View style={styles.monthSwitcher}>
+      <View
+        style={[
+          styles.monthSwitcher,
+          { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        ]}
+      >
         <IconButton
           theme={theme}
           icon="chevron-back"
@@ -150,7 +155,12 @@ export function StatsScreen({ theme }: StatsScreenProps) {
       >
         <View style={styles.primaryKpi}>
           <Text style={[styles.kpiLabel, { color: theme.colors.textMuted }]}>净消费</Text>
-          <Text style={[styles.kpiValue, { color: theme.colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.kpiValue, { color: theme.colors.text }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+          >
             {formatMoneyMinor(monthSpendingMinor, dataset.settings.currency)}
           </Text>
         </View>
@@ -165,7 +175,8 @@ export function StatsScreen({ theme }: StatsScreenProps) {
         </View>
       </View>
 
-      <View style={styles.section}>
+      {analytics.unexpected.transactionCount > 0 ? (
+        <View style={styles.section}>
         <SectionHeader
           title="预期外支出"
           subtitle="本月已确认支出中的人工标记"
@@ -180,7 +191,12 @@ export function StatsScreen({ theme }: StatsScreenProps) {
           <View style={styles.unexpectedSummary}>
             <View style={styles.unexpectedAmountBlock}>
               <Text style={[styles.kpiLabel, { color: theme.colors.textMuted }]}>金额</Text>
-              <Text style={[styles.unexpectedAmount, { color: theme.colors.text }]}>
+              <Text
+                style={[styles.unexpectedAmount, { color: theme.colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+              >
                 {formatMoneyMinor(
                   analytics.unexpected.amountMinor,
                   dataset.settings.currency,
@@ -264,7 +280,8 @@ export function StatsScreen({ theme }: StatsScreenProps) {
             </View>
           )}
         </View>
-      </View>
+        </View>
+      ) : null}
 
       {analytics.budget.foreignCurrencyTransactionCount > 0 ? (
         <View style={styles.notice}>
@@ -377,10 +394,14 @@ export function StatsScreen({ theme }: StatsScreenProps) {
 
 const styles = StyleSheet.create({
   monthSwitcher: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.xs,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   month: {
     fontSize: typography.sectionTitle,

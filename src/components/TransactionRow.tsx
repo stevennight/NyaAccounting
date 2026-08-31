@@ -50,6 +50,7 @@ export function TransactionRow({
   onPress,
 }: TransactionRowProps) {
   const category = getCategoryDefinition(transaction.categoryId, categories);
+  const categoryColor = category?.color ?? theme.colors.primary;
   const isConfirmed = transaction.status === 'confirmed';
   const isRefund = transaction.kind === 'refund';
   const isUnexpectedExpense =
@@ -68,6 +69,10 @@ export function TransactionRow({
       ? '+'
       : '-'
     : '';
+  const amountLabel = formatMoneyMinor(
+    transaction.amountMinor,
+    transaction.currency,
+  );
   const merchant =
     transaction.merchant || TRANSACTION_KIND_LABELS[transaction.kind];
   const title = transaction.description?.trim() || merchant;
@@ -86,6 +91,8 @@ export function TransactionRow({
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${title}，${amountPrefix}${amountLabel}，${meta}`}
+      accessibilityHint={onPress ? '打开账目详情' : undefined}
       onPress={onPress}
       disabled={!onPress}
       style={({ pressed }) => [
@@ -93,11 +100,11 @@ export function TransactionRow({
         { borderBottomColor: theme.colors.border, opacity: pressed ? 0.64 : 1 },
       ]}
     >
-      <View style={[styles.iconBox, { backgroundColor: theme.colors.surfaceMuted }]}>
+      <View style={[styles.iconBox, { backgroundColor: `${categoryColor}18` }]}>
         <Ionicons
           name={categoryIcons[transaction.categoryId] ?? 'pricetag-outline'}
           size={20}
-          color={theme.colors.textMuted}
+          color={categoryColor}
         />
       </View>
       <View style={styles.copy}>
@@ -109,9 +116,14 @@ export function TransactionRow({
         </Text>
       </View>
       <View style={styles.amountBox}>
-        <Text style={[styles.amount, { color: amountColor }]} numberOfLines={1}>
+        <Text
+          style={[styles.amount, { color: amountColor }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+        >
           {amountPrefix}
-          {formatMoneyMinor(transaction.amountMinor, transaction.currency)}
+          {amountLabel}
         </Text>
         {!isConfirmed || transaction.kind !== 'expense' || isUnexpectedExpense ? (
           <Text
@@ -159,6 +171,7 @@ const styles = StyleSheet.create({
   },
   copy: {
     flex: 1,
+    minWidth: 0,
     gap: spacing.xs,
   },
   merchant: {

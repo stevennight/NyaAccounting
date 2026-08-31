@@ -27,7 +27,7 @@ export function SectionHeader({ title, subtitle, action, theme }: SectionHeaderP
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
   },
@@ -38,10 +38,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: typography.sectionTitle,
     fontWeight: '800',
+    lineHeight: 24,
   },
   subtitle: {
     fontSize: typography.caption,
     lineHeight: 17,
   },
 });
-

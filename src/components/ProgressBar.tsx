@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
   },
   track: {
-    height: 8,
+    height: 6,
     borderRadius: radii.pill,
     overflow: 'hidden',
   },
@@ -68,4 +68,3 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
 });
-

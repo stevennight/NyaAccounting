@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleProp,
   StyleSheet,
+  useWindowDimensions,
   View,
   ViewStyle,
 } from 'react-native';
@@ -33,6 +34,8 @@ export function Screen({
   scrollRef,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const horizontalPadding = width >= 720 ? spacing.xl : spacing.lg;
   const content = scroll ? (
     <ScrollView
       ref={scrollRef}
@@ -41,12 +44,14 @@ export function Screen({
         styles.content,
         {
           paddingTop: Math.max(insets.top, spacing.lg),
+          paddingHorizontal: horizontalPadding,
           paddingBottom:
             (bottomNavigation ? spacing.lg : spacing.xl) + insets.bottom,
         },
         contentStyle,
       ]}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       showsVerticalScrollIndicator={false}
     >
       {children}
@@ -59,6 +64,7 @@ export function Screen({
         styles.fill,
         {
           paddingTop: Math.max(insets.top, spacing.lg),
+          paddingHorizontal: horizontalPadding,
           paddingBottom:
             (bottomNavigation ? spacing.lg : spacing.xl) + insets.bottom,
         },
@@ -88,9 +94,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: spacing.lg,
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 800,
     alignSelf: 'center',
   },
 });

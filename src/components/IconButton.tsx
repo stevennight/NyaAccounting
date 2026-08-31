@@ -36,8 +36,9 @@ export function IconButton({
       style={({ pressed }) => [
         styles.button,
         {
-          backgroundColor: selected ? theme.colors.primarySoft : 'transparent',
-          opacity: disabled ? 0.4 : pressed ? 0.64 : 1,
+          backgroundColor:
+            selected || pressed ? theme.colors.primarySoft : 'transparent',
+          opacity: disabled ? 0.4 : 1,
         },
       ]}
     >
@@ -52,11 +53,10 @@ export function IconButton({
 
 const styles = StyleSheet.create({
   button: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
 });
-

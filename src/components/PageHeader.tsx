@@ -28,7 +28,7 @@ export function PageHeader({
       {onBack ? (
         <IconButton
           theme={theme}
-          icon="arrow-back"
+          icon="chevron-back"
           label={backLabel}
           onPress={onBack}
           disabled={backDisabled}
@@ -47,7 +47,7 @@ export function PageHeader({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 58,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -61,9 +61,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: typography.pageTitle,
     fontWeight: '900',
+    lineHeight: 34,
   },
   subtitle: {
     fontSize: typography.label,
-    lineHeight: 19,
+    lineHeight: 20,
   },
 });

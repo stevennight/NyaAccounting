@@ -15,6 +15,7 @@ import { AppTheme, radii, spacing, typography } from '../theme';
 import { AppButton } from '../components/AppButton';
 import { EmptyState } from '../components/EmptyState';
 import { InlineNotice } from '../components/InlineNotice';
+import { IconButton } from '../components/IconButton';
 import { PageHeader } from '../components/PageHeader';
 import { ProgressBar } from '../components/ProgressBar';
 import { Screen } from '../components/Screen';
@@ -26,6 +27,7 @@ type HomeScreenProps = {
   onCapture: () => void;
   onOpenSettings: () => void;
   onOpenStats: () => void;
+  onOpenRecords: () => void;
   onOpenTransaction: (transaction: Transaction) => void;
 };
 
@@ -34,6 +36,7 @@ export function HomeScreen({
   onCapture,
   onOpenSettings,
   onOpenStats,
+  onOpenRecords,
   onOpenTransaction,
 }: HomeScreenProps) {
   const { dataset, persistenceError } = useAppStore();
@@ -101,11 +104,6 @@ export function HomeScreen({
   const remainingDays = budgetSummary.daysRemaining;
   const suggestedDailyMinor = budgetSummary.dailyAvailableMinor;
   const topCategory = categoryTotals[0];
-  const digitalMinor =
-    categoryTotals.find((item) => item.id === 'digital')?.value ?? 0;
-  const digitalLabel =
-    dataset.settings.categories.find((category) => category.id === 'digital')
-      ?.label ?? '数字与订阅';
   const paceTone =
     budgetSummary.health === 'over' || budgetSummary.health === 'danger'
       ? 'danger'
@@ -118,7 +116,16 @@ export function HomeScreen({
       <PageHeader
         theme={theme}
         title="本月"
-        subtitle={`${today.getFullYear()} 年 ${today.getMonth() + 1} 月 · 基于已确认记录`}
+        subtitle={`${today.getFullYear()} 年 ${today.getMonth() + 1} 月 · 已确认账目`}
+        action={
+          <IconButton
+            theme={theme}
+            icon="add"
+            label="记一笔"
+            onPress={onCapture}
+            testID="home-add"
+          />
+        }
       />
 
       {persistenceError ? (
@@ -142,18 +149,49 @@ export function HomeScreen({
         <View
           style={[
             styles.budgetBand,
-            { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary },
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
           ]}
         >
-          <Text style={[styles.eyebrow, { color: theme.colors.primary }]}>
-            {remainingMinor >= 0 ? '预算剩余' : '预算已超出'}
-          </Text>
-          <Text style={[styles.remaining, { color: theme.colors.text }]} numberOfLines={1}>
+          <View style={styles.budgetTopRow}>
+            <Text style={[styles.eyebrow, { color: theme.colors.primary }]}>
+              {remainingMinor >= 0 ? '预算剩余' : '预算已超出'}
+            </Text>
+            <View
+              style={[
+                styles.budgetTag,
+                {
+                  backgroundColor:
+                    remainingMinor >= 0
+                      ? theme.colors.primarySoft
+                      : `${theme.colors.danger}18`,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.budgetTagText,
+                  {
+                    color:
+                      remainingMinor >= 0
+                        ? theme.colors.primary
+                        : theme.colors.danger,
+                  },
+                ]}
+              >
+                {remainingMinor >= 0 ? `剩余 ${remainingDays} 天` : '需要调整预算'}
+              </Text>
+            </View>
+          </View>
+          <Text
+            style={[styles.remaining, { color: theme.colors.text }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}
+          >
             {formatMoneyMinor(Math.abs(remainingMinor), dataset.settings.currency)}
           </Text>
           <Text style={[styles.budgetMeta, { color: theme.colors.textMuted }]}>
-            已花 {formatMoneyMinor(spendingMinor, dataset.settings.currency)} / 预算{' '}
-            {formatMoneyMinor(budgetMinor, dataset.settings.currency)}
+            本月预算 {formatMoneyMinor(budgetMinor, dataset.settings.currency)}
           </Text>
           {budgetSummary.recurringReservedMinor > 0 ? (
             <Text style={[styles.reserveText, { color: theme.colors.textMuted }]}>
@@ -168,22 +206,20 @@ export function HomeScreen({
             theme={theme}
             value={spendRatio}
             tone={paceTone}
-            label={`${Math.round(spendRatio * 100)}%`}
-            detail={remainingMinor >= 0 ? `剩余 ${remainingDays} 天` : '已超过预算'}
+            label={`已使用 ${Math.round(spendRatio * 100)}%`}
+            detail={remainingMinor >= 0 ? '预算进度' : '已超过预算'}
           />
-          <View style={[styles.dailyRow, { borderTopColor: `${theme.colors.primary}44` }]}>
-            <View>
+          <View style={[styles.dailyRow, { borderTopColor: theme.colors.border }]}>
+            <View style={styles.metricBlock}>
+              <Text style={[styles.metricLabel, { color: theme.colors.textMuted }]}>本月已花</Text>
+              <Text style={[styles.metricValue, { color: theme.colors.text }]}>
+                {formatMoneyMinor(spendingMinor, dataset.settings.currency)}
+              </Text>
+            </View>
+            <View style={[styles.metricBlock, styles.metricRight]}>
               <Text style={[styles.metricLabel, { color: theme.colors.textMuted }]}>参考日均</Text>
               <Text style={[styles.metricValue, { color: theme.colors.text }]}>
                 {formatMoneyMinor(suggestedDailyMinor, dataset.settings.currency)}
-              </Text>
-            </View>
-            <View style={styles.metricRight}>
-              <Text style={[styles.metricLabel, { color: theme.colors.textMuted }]}>
-                {digitalLabel}
-              </Text>
-              <Text style={[styles.metricValue, { color: theme.colors.text }]}>
-                {formatMoneyMinor(digitalMinor, dataset.settings.currency)}
               </Text>
             </View>
           </View>
@@ -199,22 +235,6 @@ export function HomeScreen({
           />
         </View>
       ) : null}
-
-      <View style={styles.section}>
-        <SectionHeader
-          title="快速记录"
-          subtitle="截图和文字可以一起提交"
-          theme={theme}
-        />
-        <View style={styles.actions}>
-          <AppButton
-            label="开始记录"
-            icon="add-circle-outline"
-            onPress={onCapture}
-            theme={theme}
-          />
-        </View>
-      </View>
 
       {categoryTotals.length > 0 ? (
         <View style={styles.section}>
@@ -251,12 +271,24 @@ export function HomeScreen({
       ) : null}
 
       <View style={styles.section}>
-        <SectionHeader title="最近账目" theme={theme} />
+        <SectionHeader
+          title="最近账目"
+          theme={theme}
+          action={
+            <AppButton
+              label="全部账目"
+              onPress={onOpenRecords}
+              theme={theme}
+              variant="quiet"
+              compact
+            />
+          }
+        />
         {monthTransactions.length === 0 ? (
           <View
             style={[
               styles.recentEmpty,
-              { borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+              { backgroundColor: theme.colors.surfaceMuted },
             ]}
           >
             <Ionicons name="receipt-outline" size={20} color={theme.colors.textMuted} />
@@ -301,6 +333,24 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.md,
   },
+  budgetTopRow: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  budgetTag: {
+    minHeight: 28,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  budgetTagText: {
+    fontSize: typography.caption,
+    fontWeight: '800',
+  },
   eyebrow: {
     fontSize: typography.label,
     fontWeight: '800',
@@ -325,6 +375,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  metricBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
   metricRight: {
     alignItems: 'flex-end',
   },
@@ -339,9 +393,6 @@ const styles = StyleSheet.create({
   section: {
     marginTop: spacing.xxl,
     gap: spacing.lg,
-  },
-  actions: {
-    gap: spacing.sm,
   },
   categoryList: {
     gap: spacing.lg,
@@ -361,7 +412,6 @@ const styles = StyleSheet.create({
   },
   recentEmpty: {
     minHeight: 64,
-    borderWidth: 1,
     borderRadius: radii.md,
     flexDirection: 'row',
     alignItems: 'center',

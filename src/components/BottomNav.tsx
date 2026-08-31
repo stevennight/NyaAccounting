@@ -57,6 +57,7 @@ export function BottomNav({ activeTab, onChange, theme }: BottomNavProps) {
               testID={`nav-${tab.key}`}
               style={({ pressed }) => [
                 styles.item,
+                isCapture && styles.captureItem,
                 { opacity: pressed ? 0.66 : 1 },
               ]}
             >
@@ -89,8 +90,12 @@ export function BottomNav({ activeTab, onChange, theme }: BottomNavProps) {
                 style={[
                   styles.label,
                   {
-                    color: selected ? theme.colors.primary : theme.colors.textMuted,
-                    fontWeight: selected ? '800' : '600',
+                    color: isCapture
+                      ? theme.colors.primary
+                      : selected
+                        ? theme.colors.primary
+                        : theme.colors.textMuted,
+                    fontWeight: selected || isCapture ? '800' : '600',
                   },
                 ]}
               >
@@ -107,25 +112,28 @@ export function BottomNav({ activeTab, onChange, theme }: BottomNavProps) {
 const styles = StyleSheet.create({
   wrapper: {
     flexShrink: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: 1,
     paddingTop: spacing.sm,
   },
   inner: {
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 800,
     alignSelf: 'center',
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   item: {
     flex: 1,
-    maxWidth: 72,
+    maxWidth: 88,
     minWidth: 0,
-    minHeight: 56,
+    minHeight: 58,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
+  },
+  captureItem: {
+    paddingTop: 1,
   },
   iconBox: {
     width: 38,
@@ -135,8 +143,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   captureIcon: {
-    width: 44,
-    height: 36,
+    width: 46,
+    height: 38,
   },
   label: {
     fontSize: typography.caption,

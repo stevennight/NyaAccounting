@@ -31,17 +31,29 @@ export function AppButton({
 }: AppButtonProps) {
   const palette =
     variant === 'primary'
-      ? { background: theme.colors.primary, foreground: '#FFFFFF', border: theme.colors.primary }
+      ? {
+          background: theme.colors.primary,
+          pressed: theme.colors.primaryPressed,
+          foreground: '#FFFFFF',
+          border: theme.colors.primary,
+        }
       : variant === 'danger'
-        ? { background: theme.colors.danger, foreground: '#FFFFFF', border: theme.colors.danger }
+        ? {
+            background: theme.colors.danger,
+            pressed: `${theme.colors.danger}DD`,
+            foreground: '#FFFFFF',
+            border: theme.colors.danger,
+          }
         : variant === 'secondary'
           ? {
               background: theme.colors.surface,
+              pressed: theme.colors.surfaceMuted,
               foreground: theme.colors.text,
               border: theme.colors.border,
             }
           : {
               background: 'transparent',
+              pressed: theme.colors.primarySoft,
               foreground: theme.colors.primary,
               border: 'transparent',
             };
@@ -50,6 +62,7 @@ export function AppButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
       disabled={disabled || loading}
       onPress={onPress}
       testID={testID}
@@ -57,9 +70,9 @@ export function AppButton({
         styles.button,
         compact ? styles.compact : styles.regular,
         {
-          backgroundColor: palette.background,
+          backgroundColor: pressed ? palette.pressed : palette.background,
           borderColor: palette.border,
-          opacity: disabled ? 0.45 : pressed ? 0.78 : 1,
+          opacity: disabled ? 0.45 : 1,
         },
       ]}
     >
@@ -86,12 +99,12 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   regular: {
-    minHeight: 48,
+    minHeight: 50,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
   compact: {
-    minHeight: 38,
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -107,4 +120,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

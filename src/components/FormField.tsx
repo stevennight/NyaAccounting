@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -25,8 +25,12 @@ export function FormField({
   trailing,
   multiline,
   style,
+  onBlur,
+  onFocus,
   ...inputProps
 }: FormFieldProps) {
+  const [focused, setFocused] = useState(false);
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.labelRow}>
@@ -36,6 +40,14 @@ export function FormField({
       <TextInput
         {...inputProps}
         multiline={multiline}
+        onFocus={(event) => {
+          setFocused(true);
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          onBlur?.(event);
+        }}
         placeholderTextColor={theme.colors.textMuted}
         selectionColor={theme.colors.primary}
         style={[
@@ -43,7 +55,11 @@ export function FormField({
           multiline && styles.multiline,
           {
             backgroundColor: theme.colors.surface,
-            borderColor: error ? theme.colors.danger : theme.colors.border,
+            borderColor: error
+              ? theme.colors.danger
+              : focused
+                ? theme.colors.primary
+                : theme.colors.border,
             color: theme.colors.text,
           },
           style,
@@ -79,11 +95,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   input: {
-    minHeight: 46,
+    minHeight: 48,
     borderWidth: 1,
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingVertical: 11,
     fontSize: typography.body,
   },
   multiline: {
@@ -95,4 +111,3 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 });
-

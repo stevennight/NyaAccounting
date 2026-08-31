@@ -66,7 +66,12 @@ export function DonutChart({
           : null}
       </Svg>
       <View style={styles.center}>
-        <Text style={[styles.value, { color: theme.colors.text }]} numberOfLines={1}>
+        <Text
+          style={[styles.value, { color: theme.colors.text }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.68}
+        >
           {centerValue}
         </Text>
         <Text style={[styles.label, { color: theme.colors.textMuted }]}>{centerLabel}</Text>

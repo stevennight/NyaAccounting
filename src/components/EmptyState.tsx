@@ -23,12 +23,7 @@ export function EmptyState({
   onAction,
 }: EmptyStateProps) {
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-      ]}
-    >
+    <View style={styles.container}>
       <View style={[styles.icon, { backgroundColor: theme.colors.primarySoft }]}>
         <Ionicons name={icon} size={24} color={theme.colors.primary} />
       </View>
@@ -43,15 +38,14 @@ export function EmptyState({
 
 const styles = StyleSheet.create({
   container: {
-    borderWidth: 1,
-    borderRadius: radii.md,
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
     alignItems: 'center',
     gap: spacing.md,
   },
   icon: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -68,4 +62,3 @@ const styles = StyleSheet.create({
     maxWidth: 380,
   },
 });
-

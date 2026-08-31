@@ -51,13 +51,21 @@ export function ChoiceChips<T extends string>({
   };
 
   const content = (
-    <View style={styles.row} testID={testID}>
+    <View
+      style={[
+        styles.row,
+        !scrollable && styles.segmented,
+        !scrollable && { backgroundColor: theme.colors.surfaceMuted },
+      ]}
+      testID={testID}
+    >
       {options.map((option) => {
         const selected = value === option.value;
         return (
           <Pressable
             key={option.value}
             accessibilityRole="radio"
+            accessibilityLabel={option.label}
             accessibilityState={{ checked: selected }}
             aria-checked={selected}
             onPress={() => onChange(option.value)}
@@ -66,14 +74,26 @@ export function ChoiceChips<T extends string>({
             }
             style={({ pressed }) => [
               styles.chip,
+              !scrollable && styles.segmentedChip,
               {
-                backgroundColor: selected ? theme.colors.primarySoft : theme.colors.surface,
-                borderColor: selected ? theme.colors.primary : theme.colors.border,
-                opacity: pressed ? 0.68 : 1,
+                backgroundColor: selected
+                  ? scrollable
+                    ? theme.colors.primarySoft
+                    : theme.colors.surface
+                  : scrollable
+                    ? theme.colors.surface
+                    : 'transparent',
+                borderColor: selected
+                  ? theme.colors.primary
+                  : scrollable
+                    ? theme.colors.border
+                    : 'transparent',
+                opacity: pressed ? 0.72 : 1,
               },
             ]}
           >
             <Text
+              numberOfLines={1}
               style={[
                 styles.label,
                 {
@@ -112,11 +132,16 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  segmented: {
+    width: '100%',
+    gap: spacing.xs,
+    borderRadius: radii.md,
+    padding: spacing.xs,
+  },
   chip: {
-    minHeight: 38,
+    minHeight: 44,
     minWidth: 52,
     borderRadius: radii.md,
     borderWidth: 1,
@@ -124,6 +149,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  segmentedChip: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: spacing.sm,
   },
   label: {
     fontSize: typography.label,
