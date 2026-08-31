@@ -43,7 +43,15 @@ export function BottomNav({ activeTab, onChange, theme }: BottomNavProps) {
         },
       ]}
     >
-      <View style={styles.inner}>
+      <View
+        style={[
+          styles.inner,
+          {
+            paddingLeft: spacing.sm + insets.left,
+            paddingRight: spacing.sm + insets.right,
+          },
+        ]}
+      >
         {tabs.map((tab) => {
           const selected = activeTab === tab.key;
           const isCapture = tab.key === 'capture';
@@ -121,7 +129,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: spacing.sm,
   },
   item: {
     flex: 1,

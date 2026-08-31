@@ -35,7 +35,12 @@ export function PageHeader({
         />
       ) : null}
       <View style={styles.copy}>
-        <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
+        <Text
+          accessibilityRole="header"
+          style={[styles.title, { color: theme.colors.text }]}
+        >
+          {title}
+        </Text>
         {subtitle ? (
           <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text>
         ) : null}
@@ -52,7 +57,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
-    marginBottom: spacing.xl,
   },
   copy: {
     flex: 1,

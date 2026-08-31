@@ -1,4 +1,4 @@
-import { PropsWithChildren, RefObject } from 'react';
+import { PropsWithChildren, ReactNode, RefObject } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,6 +19,7 @@ type ScreenProps = PropsWithChildren<{
   keyboard?: boolean;
   bottomNavigation?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
+  header?: ReactNode;
   testID?: string;
   scrollRef?: RefObject<ScrollView | null>;
 }>;
@@ -30,23 +31,30 @@ export function Screen({
   keyboard = false,
   bottomNavigation = true,
   contentStyle,
+  header,
   testID,
   scrollRef,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const horizontalPadding = width >= 720 ? spacing.xl : spacing.lg;
+  const contentTopPadding = header
+    ? spacing.lg
+    : Math.max(insets.top, spacing.lg);
   const content = scroll ? (
     <ScrollView
       ref={scrollRef}
       testID={testID}
+      style={styles.fill}
       contentContainerStyle={[
         styles.content,
         {
-          paddingTop: Math.max(insets.top, spacing.lg),
-          paddingHorizontal: horizontalPadding,
-          paddingBottom:
-            (bottomNavigation ? spacing.lg : spacing.xl) + insets.bottom,
+          paddingTop: contentTopPadding,
+          paddingLeft: horizontalPadding + insets.left,
+          paddingRight: horizontalPadding + insets.right,
+          paddingBottom: bottomNavigation
+            ? spacing.xl
+            : spacing.xl + insets.bottom,
         },
         contentStyle,
       ]}
@@ -63,10 +71,12 @@ export function Screen({
         styles.content,
         styles.fill,
         {
-          paddingTop: Math.max(insets.top, spacing.lg),
-          paddingHorizontal: horizontalPadding,
-          paddingBottom:
-            (bottomNavigation ? spacing.lg : spacing.xl) + insets.bottom,
+          paddingTop: contentTopPadding,
+          paddingLeft: horizontalPadding + insets.left,
+          paddingRight: horizontalPadding + insets.right,
+          paddingBottom: bottomNavigation
+            ? spacing.xl
+            : spacing.xl + insets.bottom,
         },
         contentStyle,
       ]}
@@ -75,17 +85,46 @@ export function Screen({
     </View>
   );
 
-  if (!keyboard) {
-    return <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>{content}</View>;
-  }
-
-  return (
+  const body = keyboard ? (
     <KeyboardAvoidingView
-      style={[styles.fill, { backgroundColor: theme.colors.background }]}
+      style={styles.fill}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {content}
     </KeyboardAvoidingView>
+  ) : (
+    <View style={styles.fill}>{content}</View>
+  );
+
+  return (
+    <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
+      {header ? (
+        <View
+          testID={testID ? `${testID}-header` : undefined}
+          style={[
+            styles.header,
+            {
+              backgroundColor: theme.colors.background,
+              borderBottomColor: theme.colors.border,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.headerInner,
+              {
+                paddingTop: Math.max(insets.top, spacing.sm),
+                paddingLeft: horizontalPadding + insets.left,
+                paddingRight: horizontalPadding + insets.right,
+              },
+            ]}
+          >
+            {header}
+          </View>
+        </View>
+      ) : null}
+      {body}
+    </View>
   );
 }
 
@@ -97,5 +136,15 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 800,
     alignSelf: 'center',
+  },
+  header: {
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerInner: {
+    width: '100%',
+    maxWidth: 800,
+    alignSelf: 'center',
+    paddingBottom: spacing.sm,
   },
 });

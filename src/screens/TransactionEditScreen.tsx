@@ -417,17 +417,18 @@ export function TransactionEditScreen({
       theme={theme}
       keyboard
       bottomNavigation={false}
+      header={
+        <PageHeader
+          theme={theme}
+          title="编辑账目"
+          subtitle={`来源：${transaction.source} · 创建后可随时修正`}
+          onBack={requestCancel}
+          backLabel="返回账目"
+          backDisabled={saving || deleting}
+        />
+      }
       testID="transaction-edit-screen"
     >
-      <PageHeader
-        theme={theme}
-        title="编辑账目"
-        subtitle={`来源：${transaction.source} · 创建后可随时修正`}
-        onBack={requestCancel}
-        backLabel="返回账目"
-        backDisabled={saving || deleting}
-      />
-
       {notice ? (
         <View style={styles.notice}>
           <InlineNotice theme={theme} tone="danger" message={notice} />

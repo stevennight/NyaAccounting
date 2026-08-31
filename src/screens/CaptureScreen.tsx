@@ -1886,17 +1886,18 @@ export function CaptureScreen({
         keyboard
         bottomNavigation={false}
         scrollRef={scrollRef}
+        header={
+          <PageHeader
+            theme={theme}
+            title="确认账目"
+            subtitle={reviewPosition ?? '保存前核对识别结果'}
+            onBack={requestCancel}
+            backLabel="放弃本次录入"
+            backDisabled={saving}
+          />
+        }
         testID="capture-review-screen"
       >
-        <PageHeader
-          theme={theme}
-          title="确认账目"
-          subtitle={reviewPosition ?? '保存前核对识别结果'}
-          onBack={requestCancel}
-          backLabel="放弃本次录入"
-          backDisabled={saving}
-        />
-
         {notice ? (
           <View style={styles.noticeSpacing}>
             <InlineNotice
@@ -2307,21 +2308,22 @@ export function CaptureScreen({
       keyboard
       bottomNavigation={false}
       scrollRef={scrollRef}
+      header={
+        <PageHeader
+          theme={theme}
+          title="记一笔"
+          subtitle={
+            VOICE_CAPTURE_ENABLED
+              ? '截图、文字和语音可以组合'
+              : '截图和文字可以一起识别'
+          }
+          onBack={requestCancel}
+          backLabel="返回上一页"
+          backDisabled={saving}
+        />
+      }
       testID="capture-screen"
     >
-      <PageHeader
-        theme={theme}
-        title="记一笔"
-        subtitle={
-          VOICE_CAPTURE_ENABLED
-            ? '截图、文字和语音可以组合'
-            : '截图和文字可以一起识别'
-        }
-        onBack={requestCancel}
-        backLabel="返回上一页"
-        backDisabled={saving}
-      />
-
       {notice ? (
         <View style={styles.noticeSpacing}>
           <InlineNotice

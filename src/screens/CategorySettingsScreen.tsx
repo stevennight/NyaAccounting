@@ -302,20 +302,22 @@ export function CategorySettingsScreen({
   if (form) {
     return (
       <Screen
+        key="category-editor"
         theme={theme}
         keyboard
         bottomNavigation={false}
+        header={
+          <PageHeader
+            theme={theme}
+            title={isNew ? '新增分类' : '编辑分类'}
+            subtitle="名称会同步用于录入、统计和 AI 识别"
+            onBack={closeEditor}
+            backLabel="返回分类"
+            backDisabled={saving}
+          />
+        }
         testID="category-editor-screen"
       >
-        <PageHeader
-          theme={theme}
-          title={isNew ? '新增分类' : '编辑分类'}
-          subtitle="名称会同步用于录入、统计和 AI 识别"
-          onBack={closeEditor}
-          backLabel="返回分类"
-          backDisabled={saving}
-        />
-
         {notice ? (
           <View style={styles.notice}>
             <InlineNotice
@@ -427,18 +429,20 @@ export function CategorySettingsScreen({
 
   return (
     <Screen
+      key="category-list"
       theme={theme}
       bottomNavigation={false}
+      header={
+        <PageHeader
+          theme={theme}
+          title="分类管理"
+          subtitle="录入、统计和 AI 使用同一套分类"
+          onBack={onBack}
+          backLabel="返回设置"
+        />
+      }
       testID="category-settings-screen"
     >
-      <PageHeader
-        theme={theme}
-        title="分类管理"
-        subtitle="录入、统计和 AI 使用同一套分类"
-        onBack={onBack}
-        backLabel="返回设置"
-      />
-
       {notice ? (
         <View style={styles.notice}>
           <InlineNotice

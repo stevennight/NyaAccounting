@@ -119,12 +119,17 @@ export function StatsScreen({ theme }: StatsScreenProps) {
   const focusCategories = categoryData.slice(0, 2);
 
   return (
-    <Screen theme={theme} testID="stats-screen">
-      <PageHeader
-        theme={theme}
-        title="统计"
-        subtitle="看清本月消费结构与变化"
-      />
+    <Screen
+      theme={theme}
+      header={
+        <PageHeader
+          theme={theme}
+          title="统计"
+          subtitle="看清本月消费结构与变化"
+        />
+      }
+      testID="stats-screen"
+    >
 
       <View
         style={[

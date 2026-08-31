@@ -933,14 +933,21 @@ export function SettingsScreen({
         : 'success';
 
   return (
-    <Screen theme={theme} keyboard testID="settings-screen">
-      <PageHeader
-        theme={theme}
-        title={section === 'home' ? '设置' : settingsSectionTitle(section)}
-        subtitle={section === 'home' ? '管理预算、识别与本地数据' : settingsSectionSubtitle(section)}
-        onBack={section === 'home' ? undefined : onBack}
-        backLabel="返回设置"
-      />
+    <Screen
+      key={section}
+      theme={theme}
+      keyboard
+      header={
+        <PageHeader
+          theme={theme}
+          title={section === 'home' ? '设置' : settingsSectionTitle(section)}
+          subtitle={section === 'home' ? '管理预算、识别与本地数据' : settingsSectionSubtitle(section)}
+          onBack={section === 'home' ? undefined : onBack}
+          backLabel="返回设置"
+        />
+      }
+      testID="settings-screen"
+    >
 
       {notice ? (
         <View style={styles.notice}>

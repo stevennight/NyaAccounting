@@ -112,21 +112,26 @@ export function HomeScreen({
         : 'primary';
 
   return (
-    <Screen theme={theme} testID="home-screen">
-      <PageHeader
-        theme={theme}
-        title="本月"
-        subtitle={`${today.getFullYear()} 年 ${today.getMonth() + 1} 月 · 已确认账目`}
-        action={
-          <IconButton
-            theme={theme}
-            icon="add"
-            label="记一笔"
-            onPress={onCapture}
-            testID="home-add"
-          />
-        }
-      />
+    <Screen
+      theme={theme}
+      header={
+        <PageHeader
+          theme={theme}
+          title="本月"
+          subtitle={`${today.getFullYear()} 年 ${today.getMonth() + 1} 月 · 已确认账目`}
+          action={
+            <IconButton
+              theme={theme}
+              icon="add"
+              label="记一笔"
+              onPress={onCapture}
+              testID="home-add"
+            />
+          }
+        />
+      }
+      testID="home-screen"
+    >
 
       {persistenceError ? (
         <View style={styles.noticeSpacing}>

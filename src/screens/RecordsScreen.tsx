@@ -114,21 +114,26 @@ export function RecordsScreen({
   }, [dataset.settings.currency, visibleTransactions]);
 
   return (
-    <Screen theme={theme} testID="records-screen">
-      <PageHeader
-        theme={theme}
-        title="账目"
-        subtitle="按月份查找与管理记录"
-        action={
-          <IconButton
-            theme={theme}
-            icon="add"
-            label="新增账目"
-            onPress={onAdd}
-            testID="records-add"
-          />
-        }
-      />
+    <Screen
+      theme={theme}
+      header={
+        <PageHeader
+          theme={theme}
+          title="账目"
+          subtitle="按月份查找与管理记录"
+          action={
+            <IconButton
+              theme={theme}
+              icon="add"
+              label="新增账目"
+              onPress={onAdd}
+              testID="records-add"
+            />
+          }
+        />
+      }
+      testID="records-screen"
+    >
 
       <View
         style={[

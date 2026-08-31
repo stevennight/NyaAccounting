@@ -494,20 +494,22 @@ export function RecurringExpensesScreen({
   if (formOpen) {
     return (
       <Screen
+        key="recurring-expense-form"
         theme={theme}
         keyboard
         bottomNavigation={false}
+        header={
+          <PageHeader
+            theme={theme}
+            title={editingExpense ? '编辑固定支出' : '新增固定支出'}
+            subtitle="按计划预留预算，不维护支付账户余额"
+            onBack={() => void requestCloseForm()}
+            backLabel="返回固定支出列表"
+            backDisabled={saving || deletingId !== null}
+          />
+        }
         testID="recurring-expense-form"
       >
-        <PageHeader
-          theme={theme}
-          title={editingExpense ? '编辑固定支出' : '新增固定支出'}
-          subtitle="按计划预留预算，不维护支付账户余额"
-          onBack={() => void requestCloseForm()}
-          backLabel="返回固定支出列表"
-          backDisabled={saving || deletingId !== null}
-        />
-
         {notice ? (
           <View style={styles.notice}>
             <InlineNotice
@@ -772,18 +774,20 @@ export function RecurringExpensesScreen({
 
   return (
     <Screen
+      key="recurring-expenses-list"
       theme={theme}
       bottomNavigation={false}
+      header={
+        <PageHeader
+          theme={theme}
+          title="固定支出"
+          subtitle="订阅、房租和周期性服务"
+          onBack={onBack}
+          backLabel="返回设置"
+        />
+      }
       testID="recurring-expenses-screen"
     >
-      <PageHeader
-        theme={theme}
-        title="固定支出"
-        subtitle="订阅、房租和周期性服务"
-        onBack={onBack}
-        backLabel="返回设置"
-      />
-
       {notice ? (
         <View style={styles.notice}>
           <InlineNotice
