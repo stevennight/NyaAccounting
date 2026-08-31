@@ -8,7 +8,14 @@ import {
 } from 'expo-audio';
 import { File as ExpoFile } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Image,
@@ -412,6 +419,72 @@ function RecognitionProgressPanel({
   );
 }
 
+function FormDisclosure({
+  theme,
+  title,
+  summary,
+  expanded,
+  onToggle,
+  children,
+  testID,
+}: {
+  theme: AppTheme;
+  title: string;
+  summary: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+  testID: string;
+}) {
+  return (
+    <View
+      style={[
+        styles.disclosure,
+        { borderColor: theme.colors.border },
+      ]}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${expanded ? '收起' : '展开'}${title}`}
+        accessibilityState={{ expanded }}
+        onPress={onToggle}
+        testID={testID}
+        style={({ pressed }) => [
+          styles.disclosureTrigger,
+          { opacity: pressed ? 0.68 : 1 },
+        ]}
+      >
+        <View style={styles.disclosureCopy}>
+          <Text style={[styles.disclosureTitle, { color: theme.colors.text }]}>
+            {title}
+          </Text>
+          <Text
+            style={[styles.disclosureSummary, { color: theme.colors.textMuted }]}
+            numberOfLines={expanded ? 1 : 2}
+          >
+            {summary}
+          </Text>
+        </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color={theme.colors.textMuted}
+        />
+      </Pressable>
+      {expanded ? (
+        <View
+          style={[
+            styles.disclosureBody,
+            { borderTopColor: theme.colors.border },
+          ]}
+        >
+          {children}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function CaptureScreen({
   theme,
   onSaved,
@@ -447,6 +520,8 @@ export function CaptureScreen({
   const [fullscreenImageUri, setFullscreenImageUri] = useState<string | null>(null);
   const [stoppingRecording, setStoppingRecording] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [paymentDetailsExpanded, setPaymentDetailsExpanded] = useState(false);
+  const [bookkeepingExpanded, setBookkeepingExpanded] = useState(false);
   const [duplicateCandidates, setDuplicateCandidates] = useState<
     DuplicateCandidate[]
   >([]);
@@ -466,6 +541,12 @@ export function CaptureScreen({
   const scrollCaptureToTop = useCallback(() => {
     setTimeout(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
+    }, 0);
+  }, []);
+
+  const scrollCaptureToBottom = useCallback(() => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
     }, 0);
   }, []);
 
@@ -895,6 +976,16 @@ export function CaptureScreen({
         : '',
     );
     setTimeInput(reviewDraft.time ?? '');
+    setPaymentDetailsExpanded(
+      reviewDraft.review.fields.includes('paymentChannel') ||
+        reviewDraft.review.fields.includes('fundingInstrument'),
+    );
+    setBookkeepingExpanded(
+      !reviewDraft.kind ||
+        !reviewDraft.status ||
+        reviewDraft.review.fields.includes('kind') ||
+        reviewDraft.review.fields.includes('status'),
+    );
     setDuplicateCandidates([]);
     setNotice(null);
   }, [dataset.recurringExpenses]);
@@ -1732,6 +1823,7 @@ export function CaptureScreen({
       if (duplicates.length > 0 && !allowDuplicate) {
         setDuplicateCandidates(duplicates);
         setNotice(null);
+        scrollCaptureToBottom();
         return;
       }
 
@@ -1809,6 +1901,7 @@ export function CaptureScreen({
       runRetryRecognition,
       reviewQueue,
       scrollCaptureToTop,
+      scrollCaptureToBottom,
       settings.categories,
       timeError,
       timeInput,
@@ -1879,6 +1972,33 @@ export function CaptureScreen({
           reviewQueue.length,
         )} 笔`
       : null;
+    const paymentLabel =
+      channelOptions.find((option) => option.value === draft.paymentChannel)
+        ?.label ?? draft.paymentChannel;
+    const fundingSummary = [
+      fundingTypeLabels[funding.type],
+      funding.issuer,
+      funding.label,
+      funding.last4 ? `尾号 ${funding.last4}` : null,
+    ].filter((value): value is string => Boolean(value));
+    const paymentSummary = [
+      paymentLabel === '未识别' ? '支付渠道未识别' : paymentLabel,
+      funding.type === 'unknown'
+        ? '资金工具未识别'
+        : fundingSummary.join(' · '),
+    ].join(' · ');
+    const bookkeepingSummary = [
+      draft.kind ? TRANSACTION_KIND_LABELS[draft.kind] : '需选择交易类型',
+      draft.status ? TRANSACTION_STATUS_LABELS[draft.status] : '需选择交易状态',
+      draft.isUnexpected ? '预期外' : null,
+      draft.recurringExpenseId ? '已关联固定支出' : null,
+      draft.note ? '有备注' : null,
+    ].filter((value): value is string => Boolean(value));
+    const saveLabel = reviewQueue.length > 1
+      ? '保存并核对下一笔'
+      : retryQueue.length > 0
+        ? '保存并重新识别'
+        : '确认保存';
 
     return (
       <Screen
@@ -1896,6 +2016,47 @@ export function CaptureScreen({
             backDisabled={saving}
           />
         }
+        footer={
+          duplicateCandidates.length > 0 ? (
+            <View style={styles.stickyActionRow}>
+              <View style={styles.stickyActionItem}>
+                <AppButton
+                  theme={theme}
+                  label="返回检查"
+                  icon="arrow-back"
+                  onPress={() => {
+                    setDuplicateCandidates([]);
+                    setNotice(null);
+                  }}
+                  variant="secondary"
+                  disabled={saving}
+                  compact
+                  testID="capture-sticky-duplicate-review"
+                />
+              </View>
+              <View style={styles.stickyActionItem}>
+                <AppButton
+                  theme={theme}
+                  label="仍然保存"
+                  icon="checkmark"
+                  onPress={() => void saveDraft(true)}
+                  loading={saving}
+                  compact
+                  testID="capture-sticky-duplicate-save"
+                />
+              </View>
+            </View>
+          ) : (
+            <AppButton
+              theme={theme}
+              label={saveLabel}
+              icon="checkmark-circle-outline"
+              onPress={() => void saveDraft(false)}
+              loading={saving}
+              testID="capture-save"
+            />
+          )
+        }
         testID="capture-review-screen"
       >
         {notice ? (
@@ -1909,56 +2070,62 @@ export function CaptureScreen({
         ) : null}
 
         {reviewAsset ? (
-          <View style={styles.section}>
-            <SectionHeader
-              theme={theme}
-              title="原始截图"
-              subtitle="核对识别结果时可直接对照原图"
+          <Pressable
+            onPress={() => openFullscreenImage(reviewAsset.uri)}
+            accessibilityRole="button"
+            accessibilityLabel="全屏查看待核对的消费截图"
+            style={({ pressed }) => [
+              styles.reviewSource,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                opacity: pressed ? 0.72 : 1,
+              },
+            ]}
+          >
+            <Image
+              source={{ uri: reviewAsset.uri }}
+              resizeMode="contain"
+              style={[
+                styles.reviewSourceThumbnail,
+                { backgroundColor: theme.colors.surfaceMuted },
+              ]}
+              accessibilityLabel="待核对的消费截图"
+              testID="capture-review-screenshot"
             />
-            <Pressable
-              onPress={() => openFullscreenImage(reviewAsset.uri)}
-              accessibilityRole="button"
-              accessibilityLabel="全屏查看待核对的消费截图"
-              style={styles.reviewPreviewTap}
-            >
-              <Image
-                source={{ uri: reviewAsset.uri }}
-                resizeMode="contain"
-                style={[
-                  styles.reviewPreview,
-                  { backgroundColor: theme.colors.surfaceMuted },
-                ]}
-                accessibilityLabel="待核对的消费截图"
-                testID="capture-review-screenshot"
-              />
-            </Pressable>
-            <Text style={[styles.mediaMeta, { color: theme.colors.textMuted }]}>
-              {[reviewAsset.fileName || '已选择图片', `${reviewAsset.width} × ${reviewAsset.height}`]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-          </View>
+            <View style={styles.reviewSourceCopy}>
+              <Text style={[styles.reviewSourceTitle, { color: theme.colors.text }]}>
+                原始截图
+              </Text>
+              <Text
+                style={[styles.mediaMeta, { color: theme.colors.textMuted }]}
+                numberOfLines={2}
+              >
+                {[reviewAsset.fileName || '已选择图片', `${reviewAsset.width} × ${reviewAsset.height}`]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            </View>
+            <Ionicons name="expand-outline" size={20} color={theme.colors.primary} />
+          </Pressable>
         ) : null}
 
         {draft.source !== 'manual' ? (
-          <View style={styles.section}>
-            <SectionHeader
-              theme={theme}
-              title={`识别置信度 ${Math.round(draft.confidence * 100)}%`}
-              subtitle={
-                reviewFields.length > 0
-                  ? `建议复核：${reviewFields.join('、')}`
-                  : '关键字段已识别'
-              }
-            />
+          <View style={styles.reviewStatus}>
             <InlineNotice
               theme={theme}
               tone={draft.review.required ? 'warning' : 'success'}
               message={
                 draft.review.required
-                  ? draft.review.reasons.slice(0, 3).join('；') ||
-                    '部分字段需要人工确认。'
-                  : '未发现必须复核的字段。'
+                  ? `识别置信度 ${Math.round(draft.confidence * 100)}%。${
+                      reviewFields.length > 0
+                        ? `建议复核：${reviewFields.join('、')}。`
+                        : ''
+                    }${
+                      draft.review.reasons.slice(0, 2).join('；') ||
+                      '部分字段需要人工确认。'
+                    }`
+                  : `识别置信度 ${Math.round(draft.confidence * 100)}%，关键字段已识别。`
               }
             />
           </View>
@@ -2081,73 +2248,88 @@ export function CaptureScreen({
         </View>
 
         <View style={styles.section}>
-          <SectionHeader theme={theme} title="支付信息" />
-          <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
-            支付渠道
-          </Text>
-          <ChoiceChips
+          <FormDisclosure
             theme={theme}
-            value={draft.paymentChannel}
-            options={channelOptions}
-            onChange={(value) => updateDraft({ paymentChannel: value })}
-            testID="capture-payment-channel"
-          />
-          <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
-            资金工具
-          </Text>
-          <ChoiceChips
-            theme={theme}
-            value={funding.type}
-            options={fundingTypeOptions}
-            onChange={(value) => updateFundingInstrument({ type: value })}
-            testID="capture-funding-type"
-          />
-          <View style={styles.fieldRow}>
-            <View style={styles.fieldHalf}>
-              <FormField
-                theme={theme}
-                label="发卡机构（可选）"
-                value={funding.issuer ?? ''}
-                onChangeText={(value) =>
-                  updateFundingInstrument({ issuer: value })
-                }
-                placeholder="仅填写银行或金融机构，例如：招商银行"
-                hint="机构只填银行/金融机构；卡类型写在卡/账户名称"
-                testID="capture-funding-issuer"
-              />
+            title="支付方式"
+            summary={paymentSummary}
+            expanded={paymentDetailsExpanded}
+            onToggle={() => setPaymentDetailsExpanded((current) => !current)}
+            testID="capture-payment-disclosure"
+          >
+            <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
+              支付渠道
+            </Text>
+            <ChoiceChips
+              theme={theme}
+              value={draft.paymentChannel}
+              options={channelOptions}
+              onChange={(value) => updateDraft({ paymentChannel: value })}
+              testID="capture-payment-channel"
+            />
+            <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
+              资金工具
+            </Text>
+            <ChoiceChips
+              theme={theme}
+              value={funding.type}
+              options={fundingTypeOptions}
+              onChange={(value) => updateFundingInstrument({ type: value })}
+              testID="capture-funding-type"
+            />
+            <View style={[styles.fieldRow, styles.optionalFieldRow]}>
+              <View style={styles.optionalField}>
+                <FormField
+                  theme={theme}
+                  label="发卡机构（可选）"
+                  value={funding.issuer ?? ''}
+                  onChangeText={(value) =>
+                    updateFundingInstrument({ issuer: value })
+                  }
+                  placeholder="例如：招商银行"
+                  hint="这里只填写银行或金融机构"
+                  testID="capture-funding-issuer"
+                />
+              </View>
+              <View style={styles.optionalField}>
+                <FormField
+                  theme={theme}
+                  label="卡/账户名称（可选）"
+                  value={funding.label ?? ''}
+                  onChangeText={(value) =>
+                    updateFundingInstrument({ label: value })
+                  }
+                  placeholder="例如：Visa、工资卡"
+                  testID="capture-funding-label"
+                />
+              </View>
             </View>
-            <View style={styles.fieldHalf}>
-              <FormField
-                theme={theme}
-                label="卡/账户名称（可选）"
-                value={funding.label ?? ''}
-                onChangeText={(value) =>
-                  updateFundingInstrument({ label: value })
-                }
-                placeholder="例如：网商银行储蓄卡、Visa"
-                testID="capture-funding-label"
-              />
-            </View>
-          </View>
-          <FormField
-            theme={theme}
-            label="卡号尾号（可选）"
-            value={funding.last4 ?? ''}
-            onChangeText={(value) =>
-              updateFundingInstrument({
-                last4: value.replace(/\D/g, '').slice(0, 4),
-              })
-            }
-            keyboardType="number-pad"
-            maxLength={4}
-            placeholder="1234"
-            error={last4Error}
-            testID="capture-funding-last4"
-          />
+            <FormField
+              theme={theme}
+              label="卡号尾号（可选）"
+              value={funding.last4 ?? ''}
+              onChangeText={(value) =>
+                updateFundingInstrument({
+                  last4: value.replace(/\D/g, '').slice(0, 4),
+                })
+              }
+              keyboardType="number-pad"
+              maxLength={4}
+              placeholder="1234"
+              error={last4Error}
+              testID="capture-funding-last4"
+            />
+          </FormDisclosure>
         </View>
 
         <View style={styles.section}>
-          <SectionHeader theme={theme} title="记账规则" />
+          <FormDisclosure
+            theme={theme}
+            title="更多记账设置"
+            summary={bookkeepingSummary.join(' · ')}
+            expanded={bookkeepingExpanded}
+            onToggle={() => setBookkeepingExpanded((current) => !current)}
+            testID="capture-bookkeeping-disclosure"
+          >
           <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
             交易类型
           </Text>
@@ -2247,6 +2429,7 @@ export function CaptureScreen({
             placeholder="仅供自己补充，不由 AI 生成"
             testID="capture-note"
           />
+          </FormDisclosure>
         </View>
 
         <DuplicateWarning
@@ -2261,42 +2444,36 @@ export function CaptureScreen({
           }}
         />
 
-        <View style={styles.footerActions}>
-          <AppButton
-            theme={theme}
-            label="舍弃此笔"
-            icon="trash-outline"
-            onPress={discardCurrentReview}
-            disabled={saving || recognizing}
-            variant="quiet"
-            testID="capture-discard"
-          />
-          <AppButton
-            theme={theme}
-            label="加入重新识别"
-            icon="refresh-outline"
-            onPress={queueCurrentForRetry}
-            disabled={saving || recognizing || !reviewQueue[0]}
-            variant="secondary"
-            testID="capture-queue-retry"
-          />
-          {duplicateCandidates.length === 0 ? (
-            <AppButton
-              theme={theme}
-              label={
-                reviewQueue.length > 1
-                  ? '保存并核对下一笔'
-                  : retryQueue.length > 0
-                    ? '保存并重新识别'
-                    : '确认保存'
-              }
-              icon="checkmark-circle-outline"
-              onPress={() => void saveDraft(false)}
-              loading={saving}
-              testID="capture-save"
-            />
-          ) : null}
-        </View>
+        {duplicateCandidates.length === 0 ? (
+          <View style={styles.secondaryActions}>
+            <View style={styles.secondaryActionItem}>
+              <AppButton
+                theme={theme}
+                label="舍弃此笔"
+                icon="trash-outline"
+                onPress={discardCurrentReview}
+                disabled={saving || recognizing}
+                variant="quiet"
+                compact
+                testID="capture-discard"
+              />
+            </View>
+            {reviewQueue[0] ? (
+              <View style={styles.secondaryActionItem}>
+                <AppButton
+                  theme={theme}
+                  label="重新识别"
+                  icon="refresh-outline"
+                  onPress={queueCurrentForRetry}
+                  disabled={saving || recognizing}
+                  variant="secondary"
+                  compact
+                  testID="capture-queue-retry"
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         {fullscreenImagePreview}
       </Screen>
     );
@@ -2758,14 +2935,63 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 240,
   },
-  reviewPreview: {
-    width: '100%',
-    height: 360,
+  reviewSource: {
+    minHeight: 96,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  reviewSourceThumbnail: {
+    width: 78,
+    height: 78,
+    flexShrink: 0,
     borderRadius: radii.sm,
   },
-  reviewPreviewTap: {
-    width: '100%',
-    height: 360,
+  reviewSourceCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  reviewSourceTitle: {
+    fontSize: typography.body,
+    fontWeight: '800',
+  },
+  reviewStatus: {
+    marginBottom: spacing.xl,
+  },
+  disclosure: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+  },
+  disclosureTrigger: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  disclosureCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
+  },
+  disclosureTitle: {
+    fontSize: typography.sectionTitle,
+    fontWeight: '800',
+  },
+  disclosureSummary: {
+    fontSize: typography.label,
+    lineHeight: 19,
+  },
+  disclosureBody: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+    gap: spacing.lg,
   },
   fullscreenModal: {
     flex: 1,
@@ -2935,7 +3161,30 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  footerActions: {
-    gap: spacing.md,
+  optionalFieldRow: {
+    flexWrap: 'wrap',
+  },
+  optionalField: {
+    flexGrow: 1,
+    flexBasis: 240,
+  },
+  secondaryActions: {
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  secondaryActionItem: {
+    flexGrow: 1,
+    flexBasis: 150,
+  },
+  stickyActionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  stickyActionItem: {
+    flex: 1,
+    minWidth: 0,
   },
 });
