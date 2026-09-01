@@ -1,6 +1,6 @@
 {
   "name": "nyaaccounting",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "main": "index.ts",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.7",
