@@ -12,6 +12,7 @@ import {
 } from '../domain/date';
 import {
   formatMoneyMinor,
+  getCurrencyMinorUnits,
   majorToMinor,
   minorToMajor,
 } from '../domain/money';
@@ -51,6 +52,7 @@ type TransactionEditScreenProps = {
   transaction: Transaction;
   transactions: readonly Transaction[];
   locale: string;
+  defaultCurrency: string;
   categories: readonly CategoryDefinition[];
   recurringExpenses: readonly RecurringExpense[];
   paymentChannels: readonly PaymentChannelDefinition[];
@@ -93,6 +95,7 @@ export function TransactionEditScreen({
   transaction,
   transactions,
   locale,
+  defaultCurrency,
   categories,
   recurringExpenses,
   paymentChannels,
@@ -104,6 +107,13 @@ export function TransactionEditScreen({
     String(minorToMajor(transaction.amountMinor, transaction.currency)),
   );
   const [currency, setCurrency] = useState(transaction.currency.toUpperCase());
+  const [convertedAmount, setConvertedAmount] = useState(() =>
+    transaction.convertedCurrency === defaultCurrency &&
+    typeof transaction.convertedAmountMinor === 'number' &&
+    Number.isSafeInteger(transaction.convertedAmountMinor)
+      ? String(minorToMajor(transaction.convertedAmountMinor, defaultCurrency))
+      : '',
+  );
   const [merchant, setMerchant] = useState(transaction.merchant);
   const [description, setDescription] = useState(transaction.description ?? '');
   const [date, setDate] = useState(transaction.date);
@@ -218,6 +228,12 @@ export function TransactionEditScreen({
   const hasChanges =
     amount !== String(minorToMajor(transaction.amountMinor, transaction.currency)) ||
     currency !== transaction.currency ||
+    convertedAmount !==
+      (transaction.convertedCurrency === defaultCurrency &&
+      typeof transaction.convertedAmountMinor === 'number' &&
+      Number.isSafeInteger(transaction.convertedAmountMinor)
+        ? String(minorToMajor(transaction.convertedAmountMinor, defaultCurrency))
+        : '') ||
     merchant !== transaction.merchant ||
     description !== (transaction.description ?? '') ||
     date !== transaction.date ||
@@ -243,6 +259,29 @@ export function TransactionEditScreen({
     () => majorToMinor(Number(amount), currency),
     [amount, currency],
   );
+  const isForeignCurrency = currency !== defaultCurrency;
+  const convertedAmountMinor = useMemo(
+    () =>
+      convertedAmount.trim()
+        ? majorToMinor(Number(convertedAmount), defaultCurrency)
+        : null,
+    [convertedAmount, defaultCurrency],
+  );
+  const conversionError =
+    !isForeignCurrency || !convertedAmount.trim()
+      ? undefined
+      : convertedAmountMinor !== null && convertedAmountMinor > 0
+        ? undefined
+        : `请输入大于 0 的${defaultCurrency}金额，或清空以移除换算。`;
+  const conversionRate =
+    isForeignCurrency &&
+    amountMinor !== null &&
+    convertedAmountMinor !== null &&
+    amountMinor > 0
+      ? convertedAmountMinor /
+        10 ** getCurrencyMinorUnits(defaultCurrency) /
+        (amountMinor / 10 ** getCurrencyMinorUnits(currency))
+      : null;
   const amountError =
     amount.trim() && amountMinor !== null && amountMinor > 0
       ? undefined
@@ -270,6 +309,7 @@ export function TransactionEditScreen({
     if (
       amountError ||
       currencyError ||
+      conversionError ||
       dateError ||
       timeError ||
       merchantError ||
@@ -290,8 +330,18 @@ export function TransactionEditScreen({
       subcategoryId: _subcategoryId,
       note: _note,
       isUnexpected: _isUnexpected,
+      convertedAmountMinor: _convertedAmountMinor,
+      convertedCurrency: _convertedCurrency,
+      exchangeRate: _exchangeRate,
+      conversionUpdatedAt: _conversionUpdatedAt,
       ...base
     } = transaction;
+    const hasConversion =
+      currency !== defaultCurrency &&
+      convertedAmount.trim() &&
+      convertedAmountMinor !== null &&
+      convertedAmountMinor > 0 &&
+      amountMinor > 0;
     const hasFundingDetails =
       fundingType !== 'unknown' ||
       Boolean(issuer.trim() || fundingLabel.trim() || last4.trim());
@@ -300,6 +350,14 @@ export function TransactionEditScreen({
       ...base,
       amountMinor,
       currency,
+      ...(hasConversion
+        ? {
+            convertedAmountMinor,
+            convertedCurrency: defaultCurrency,
+            exchangeRate: conversionRate ?? undefined,
+            conversionUpdatedAt: now,
+          }
+        : {}),
       merchant: merchant.trim(),
       ...(description.trim() ? { description: description.trim() } : {}),
       date,
@@ -464,6 +522,22 @@ export function TransactionEditScreen({
             />
           </View>
         </View>
+        {isForeignCurrency ? (
+          <View style={styles.conversionBox}>
+            <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>默认币种补录（{defaultCurrency}）</Text>
+            <FormField
+              theme={theme}
+              label={`折合金额（${defaultCurrency}）`}
+              value={convertedAmount}
+              onChangeText={setConvertedAmount}
+              keyboardType="decimal-pad"
+              placeholder="例如：52.80"
+              error={conversionError}
+              hint={conversionRate ? `记录汇率：1 ${currency} ≈ ${conversionRate.toFixed(6)} ${defaultCurrency}` : '补录后会计入默认币种统计和预算'}
+              testID="edit-converted-amount"
+            />
+          </View>
+        ) : null}
         <View style={styles.twoColumns}>
           <View style={styles.flexField}>
             <FormField
@@ -700,6 +774,13 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: spacing.xxl,
     gap: spacing.md,
+  },
+  conversionBox: {
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
   },
   fieldLabel: {
     fontSize: typography.label,

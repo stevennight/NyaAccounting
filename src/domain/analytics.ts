@@ -12,7 +12,10 @@ import {
   trailingMonthKeys,
 } from './date';
 import { calculateRecurringReserveMinor } from './recurring';
-import { getSpendingImpactMinor } from './transactions';
+import {
+  getSpendingImpactMinor,
+  getTransactionAmountMinor,
+} from './transactions';
 import type {
   AppSettings,
   CategoryDefinition,
@@ -242,24 +245,25 @@ export function calculateMonthlyBudget(
   const monthTransactions = input.transactions.filter((transaction) =>
     transactionIsInMonth(transaction, input.month),
   );
-  const currencyTransactions = monthTransactions.filter(
-    (transaction) => transaction.currency === input.currency,
-  );
-  const countedTransactions = currencyTransactions.filter(
+  const countedTransactions = monthTransactions.filter(
     (transaction) => getSpendingImpactMinor(transaction, input.currency) !== 0,
   );
   const grossExpenseMinor = countedTransactions.reduce(
-    (total, transaction) =>
-      transaction.kind === 'expense'
-        ? total + Math.abs(transaction.amountMinor)
-        : total,
+    (total, transaction) => {
+      const amountMinor = getTransactionAmountMinor(transaction, input.currency);
+      return transaction.kind === 'expense' && amountMinor !== null
+        ? total + Math.abs(amountMinor)
+        : total;
+    },
     0,
   );
   const refundMinor = countedTransactions.reduce(
-    (total, transaction) =>
-      transaction.kind === 'refund'
-        ? total + Math.abs(transaction.amountMinor)
-        : total,
+    (total, transaction) => {
+      const amountMinor = getTransactionAmountMinor(transaction, input.currency);
+      return transaction.kind === 'refund' && amountMinor !== null
+        ? total + Math.abs(amountMinor)
+        : total;
+    },
     0,
   );
   const netSpentMinor = grossExpenseMinor - refundMinor;
@@ -326,6 +330,7 @@ export function calculateMonthlyBudget(
       monthTransactions.filter(
         (transaction) =>
           transaction.currency !== input.currency &&
+          getSpendingImpactMinor(transaction, input.currency) === 0 &&
           getSpendingImpactMinor(transaction) !== 0,
       ).length,
     elapsedDays,
@@ -385,10 +390,14 @@ export function calculateCategoryAnalytics(
       refundMinor: 0,
       transactionCount: 0,
     };
+    const amountMinor = getTransactionAmountMinor(transaction, input.currency);
+    if (amountMinor === null) {
+      continue;
+    }
     if (transaction.kind === 'expense') {
-      bucket.grossExpenseMinor += Math.abs(transaction.amountMinor);
+      bucket.grossExpenseMinor += Math.abs(amountMinor);
     } else if (transaction.kind === 'refund') {
-      bucket.refundMinor += Math.abs(transaction.amountMinor);
+      bucket.refundMinor += Math.abs(amountMinor);
     }
     bucket.transactionCount += 1;
     buckets.set(transaction.categoryId, bucket);
@@ -666,10 +675,19 @@ export function calculateMonthAnalytics(
   ).size;
   const largestExpense =
     countedExpenses.reduce<Transaction | null>(
-      (largest, transaction) =>
-        !largest || transaction.amountMinor > largest.amountMinor
+      (largest, transaction) => {
+        const amountMinor = getTransactionAmountMinor(
+          transaction,
+          budgetInput.currency,
+        );
+        const largestAmountMinor = largest
+          ? getTransactionAmountMinor(largest, budgetInput.currency)
+          : null;
+        return amountMinor !== null &&
+          (largestAmountMinor === null || amountMinor > largestAmountMinor)
           ? transaction
-          : largest,
+          : largest;
+      },
       null,
     );
 

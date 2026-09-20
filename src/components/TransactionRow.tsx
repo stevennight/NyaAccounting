@@ -73,6 +73,15 @@ export function TransactionRow({
     transaction.amountMinor,
     transaction.currency,
   );
+  const convertedLabel =
+    transaction.convertedCurrency &&
+    typeof transaction.convertedAmountMinor === 'number' &&
+    Number.isSafeInteger(transaction.convertedAmountMinor)
+      ? `≈ ${formatMoneyMinor(
+          transaction.convertedAmountMinor,
+          transaction.convertedCurrency,
+        )}`
+      : null;
   const merchant =
     transaction.merchant || TRANSACTION_KIND_LABELS[transaction.kind];
   const title = transaction.description?.trim() || merchant;
@@ -91,7 +100,7 @@ export function TransactionRow({
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityLabel={`${title}，${amountPrefix}${amountLabel}，${meta}`}
+      accessibilityLabel={`${title}，${amountPrefix}${amountLabel}${convertedLabel ? `，${convertedLabel}` : ''}，${meta}`}
       accessibilityHint={onPress ? '打开账目详情' : undefined}
       onPress={onPress}
       disabled={!onPress}
@@ -125,6 +134,11 @@ export function TransactionRow({
           {amountPrefix}
           {amountLabel}
         </Text>
+        {convertedLabel ? (
+          <Text style={[styles.converted, { color: theme.colors.textMuted }]}>
+            {convertedLabel}
+          </Text>
+        ) : null}
         {!isConfirmed || transaction.kind !== 'expense' || isUnexpectedExpense ? (
           <Text
             style={[
@@ -191,6 +205,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   kind: {
+    fontSize: typography.caption,
+  },
+  converted: {
     fontSize: typography.caption,
   },
 });

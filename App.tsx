@@ -352,6 +352,7 @@ function AppContent() {
         transaction={editingTransaction}
         transactions={dataset.transactions}
         locale={dataset.settings.locale}
+        defaultCurrency={dataset.settings.currency}
         categories={dataset.settings.categories}
         recurringExpenses={dataset.recurringExpenses}
         paymentChannels={dataset.settings.paymentChannels}

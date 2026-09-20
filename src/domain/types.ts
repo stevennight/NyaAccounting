@@ -118,6 +118,14 @@ export interface Transaction {
    */
   amountMinor: number;
   currency: CurrencyCode;
+  /** Optional amount recorded in the app's default currency for reporting. */
+  convertedAmountMinor?: number;
+  /** Currency used by convertedAmountMinor (normally the app default currency). */
+  convertedCurrency?: CurrencyCode;
+  /** Informational rate: one unit of the original currency equals this many converted units. */
+  exchangeRate?: number;
+  /** When the conversion was last entered or updated. */
+  conversionUpdatedAt?: string;
   /** User-marked spending that was outside the planned budget. */
   isUnexpected?: boolean;
   /**
@@ -214,6 +222,10 @@ export interface TransactionDraft {
   status: TransactionStatus | null;
   amountMinor: number | null;
   currency: CurrencyCode | null;
+  convertedAmountMinor?: number;
+  convertedCurrency?: CurrencyCode;
+  exchangeRate?: number;
+  conversionUpdatedAt?: string;
   isUnexpected?: boolean;
   date: LocalDate | null;
   time: LocalTime | null;
@@ -252,6 +264,10 @@ export interface TransactionDraftInput {
   isUnexpected?: unknown;
   unexpected?: unknown;
   currency?: unknown;
+  convertedAmountMinor?: unknown;
+  convertedCurrency?: unknown;
+  exchangeRate?: unknown;
+  conversionUpdatedAt?: unknown;
   date?: unknown;
   time?: unknown;
   occurredAt?: unknown;

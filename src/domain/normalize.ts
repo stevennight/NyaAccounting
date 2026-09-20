@@ -628,6 +628,19 @@ export function normalizeTransactionDraft(
   }
   const amountMinor =
     parsedAmount === null ? null : Math.abs(parsedAmount);
+  const convertedCurrency = normalizeCurrencyCode(input.convertedCurrency);
+  const convertedAmountMinor = normalizeMinorAmount(input.convertedAmountMinor);
+  const rawExchangeRate =
+    typeof input.exchangeRate === 'number'
+      ? input.exchangeRate
+      : typeof input.exchangeRate === 'string'
+        ? Number(input.exchangeRate)
+        : Number.NaN;
+  const exchangeRate =
+    Number.isFinite(rawExchangeRate) && rawExchangeRate > 0
+      ? rawExchangeRate
+      : undefined;
+  const conversionUpdatedAt = stringValue(input.conversionUpdatedAt);
   const isUnexpected =
     input.isUnexpected === true || input.unexpected === true;
 
@@ -702,6 +715,11 @@ export function normalizeTransactionDraft(
     status,
     amountMinor,
     currency,
+    ...(convertedAmountMinor !== null && convertedCurrency
+      ? { convertedAmountMinor, convertedCurrency }
+      : {}),
+    ...(exchangeRate !== undefined ? { exchangeRate } : {}),
+    ...(conversionUpdatedAt ? { conversionUpdatedAt } : {}),
     ...(isUnexpected ? { isUnexpected: true } : {}),
     date,
     time,
@@ -869,6 +887,18 @@ export function confirmTransactionDraft(
     status: draft.status,
     amountMinor: Math.abs(draft.amountMinor),
     currency: draft.currency,
+    ...(draft.convertedAmountMinor !== undefined && draft.convertedCurrency
+      ? {
+          convertedAmountMinor: draft.convertedAmountMinor,
+          convertedCurrency: draft.convertedCurrency,
+          ...(draft.exchangeRate !== undefined
+            ? { exchangeRate: draft.exchangeRate }
+            : {}),
+          ...(draft.conversionUpdatedAt
+            ? { conversionUpdatedAt: draft.conversionUpdatedAt }
+            : {}),
+        }
+      : {}),
     ...(draft.isUnexpected && draft.kind === 'expense'
       ? { isUnexpected: true }
       : {}),

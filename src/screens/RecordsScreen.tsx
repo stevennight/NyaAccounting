@@ -20,6 +20,7 @@ import { SearchField } from '../components/SearchField';
 import { TransactionRow } from '../components/TransactionRow';
 
 type RecordFilter = 'all' | TransactionKind;
+type CurrencyFilter = 'all' | 'default' | 'foreign' | `currency:${string}`;
 
 const filterOptions: Array<ChoiceOption<RecordFilter>> = [
   { value: 'all', label: '全部' },
@@ -57,13 +58,41 @@ export function RecordsScreen({
   const { dataset } = useAppStore();
   const [month, setMonth] = useState(() => formatMonthKey(new Date()));
   const [filter, setFilter] = useState<RecordFilter>('all');
+  const [currencyFilter, setCurrencyFilter] = useState<CurrencyFilter>('all');
   const [query, setQuery] = useState('');
+
+  const currencyOptions = useMemo<Array<ChoiceOption<CurrencyFilter>>>(() => {
+    const currencies = Array.from(
+      new Set(dataset.transactions.map((transaction) => transaction.currency)),
+    ).sort();
+    return [
+      { value: 'all', label: '全部币种' },
+      { value: 'default', label: `本位币 ${dataset.settings.currency}` },
+      { value: 'foreign', label: '外币' },
+      ...currencies
+        .filter((currency) => currency !== dataset.settings.currency)
+        .map((currency) => ({
+          value: `currency:${currency}` as CurrencyFilter,
+          label: currency,
+        })),
+    ];
+  }, [dataset.settings.currency, dataset.transactions]);
 
   const visibleTransactions = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return dataset.transactions
       .filter((transaction) => transaction.date.startsWith(month))
       .filter((transaction) => filter === 'all' || transaction.kind === filter)
+      .filter((transaction) => {
+        if (currencyFilter === 'all') return true;
+        if (currencyFilter === 'default') {
+          return transaction.currency === dataset.settings.currency;
+        }
+        if (currencyFilter === 'foreign') {
+          return transaction.currency !== dataset.settings.currency;
+        }
+        return transaction.currency === currencyFilter.slice('currency:'.length);
+      })
       .filter((transaction) => {
         if (!needle) {
           return true;
@@ -73,7 +102,7 @@ export function RecordsScreen({
           .some((value) => value?.toLocaleLowerCase().includes(needle));
       })
       .sort((left, right) => compareTransactionDateTime(right, left));
-  }, [dataset.transactions, filter, month, query]);
+  }, [currencyFilter, dataset.settings.currency, dataset.transactions, filter, month, query]);
 
   const netSpendingMinor = useMemo(
     () =>
@@ -85,9 +114,10 @@ export function RecordsScreen({
       ),
     [dataset.settings.currency, visibleTransactions],
   );
-  const foreignCurrencyCount = visibleTransactions.filter(
+  const unconvertedForeignCurrencyCount = visibleTransactions.filter(
     (transaction) =>
       transaction.currency !== dataset.settings.currency &&
+      getSpendingImpactMinor(transaction, dataset.settings.currency) === 0 &&
       getSpendingImpactMinor(transaction) !== 0,
   ).length;
 
@@ -181,12 +211,12 @@ export function RecordsScreen({
         </View>
       </View>
 
-      {foreignCurrencyCount > 0 ? (
+      {unconvertedForeignCurrencyCount > 0 ? (
         <View style={styles.notice}>
           <InlineNotice
             theme={theme}
             tone="warning"
-            message={`${foreignCurrencyCount} 笔外币消费保留在列表中，但没有换算或计入本页净消费。`}
+            message={`${unconvertedForeignCurrencyCount} 笔外币消费尚未补录${dataset.settings.currency}金额，因此没有计入本页净消费。点击账目即可补录。`}
           />
         </View>
       ) : null}
@@ -197,6 +227,13 @@ export function RecordsScreen({
           value={filter}
           options={filterOptions}
           onChange={setFilter}
+        />
+        <ChoiceChips
+          theme={theme}
+          value={currencyFilter}
+          options={currencyOptions}
+          onChange={setCurrencyFilter}
+          testID="records-currency-filter"
         />
         <SearchField
           theme={theme}
@@ -213,9 +250,9 @@ export function RecordsScreen({
           theme={theme}
           icon="receipt-outline"
           title="这个月还没有匹配的账目"
-          message={query || filter !== 'all' ? '试试清除搜索或切换筛选条件。' : '从一张消费截图开始即可。'}
-          actionLabel={!query && filter === 'all' ? '记第一笔' : undefined}
-          onAction={!query && filter === 'all' ? onAdd : undefined}
+          message={query || filter !== 'all' || currencyFilter !== 'all' ? '试试清除搜索或切换筛选条件。' : '从一张消费截图开始即可。'}
+          actionLabel={!query && filter === 'all' && currencyFilter === 'all' ? '记第一笔' : undefined}
+          onAction={!query && filter === 'all' && currencyFilter === 'all' ? onAdd : undefined}
         />
       ) : (
         <View style={styles.groups}>

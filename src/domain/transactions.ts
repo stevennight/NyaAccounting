@@ -57,22 +57,44 @@ export function getSpendingImpactMinor(
   transaction: Transaction,
   currency?: CurrencyCode,
 ): number {
+  const amountMinor = getTransactionAmountMinor(transaction, currency);
   if (
     transaction.status !== 'confirmed' ||
-    (currency && transaction.currency !== currency) ||
-    !Number.isSafeInteger(transaction.amountMinor)
+    amountMinor === null
   ) {
     return 0;
   }
 
   if (transaction.kind === 'expense') {
-    return Math.abs(transaction.amountMinor);
+    return Math.abs(amountMinor);
   }
   if (transaction.kind === 'refund') {
-    return -Math.abs(transaction.amountMinor);
+    return -Math.abs(amountMinor);
   }
 
   return 0;
+}
+
+/** Returns the amount in the requested reporting currency, if available. */
+export function getTransactionAmountMinor(
+  transaction: Transaction,
+  currency?: CurrencyCode,
+): number | null {
+  if (!currency || transaction.currency === currency) {
+    return Number.isSafeInteger(transaction.amountMinor)
+      ? transaction.amountMinor
+      : null;
+  }
+
+  if (
+    transaction.convertedCurrency === currency &&
+    typeof transaction.convertedAmountMinor === 'number' &&
+    Number.isSafeInteger(transaction.convertedAmountMinor)
+  ) {
+    return transaction.convertedAmountMinor;
+  }
+
+  return null;
 }
 
 export function isSpendingTransaction(

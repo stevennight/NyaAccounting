@@ -107,6 +107,21 @@ function expectOptionalString(
   }
 }
 
+function expectOptionalSafeInteger(value: unknown, path: string): void {
+  if (value !== undefined) {
+    expectSafeInteger(value, path, { minimum: 1 });
+  }
+}
+
+function expectOptionalPositiveNumber(value: unknown, path: string): void {
+  if (
+    value !== undefined &&
+    (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+  ) {
+    validationError(path, '应为大于 0 的数字。');
+  }
+}
+
 function expectBoolean(value: unknown, path: string): void {
   if (typeof value !== 'boolean') {
     validationError(path, '应为布尔值。');
@@ -205,6 +220,16 @@ function validateTransaction(
   expectEnum(transaction.status, transactionStatuses, `${path}.status`);
   expectSafeInteger(transaction.amountMinor, `${path}.amountMinor`, { minimum: 1 });
   expectString(transaction.currency, `${path}.currency`, { maximumLength: 16 });
+  expectOptionalSafeInteger(
+    transaction.convertedAmountMinor,
+    `${path}.convertedAmountMinor`,
+  );
+  expectOptionalString(transaction.convertedCurrency, `${path}.convertedCurrency`, 16);
+  expectOptionalPositiveNumber(transaction.exchangeRate, `${path}.exchangeRate`);
+  expectOptionalString(
+    transaction.conversionUpdatedAt,
+    `${path}.conversionUpdatedAt`,
+  );
   if (transaction.isUnexpected !== undefined) {
     expectBoolean(transaction.isUnexpected, `${path}.isUnexpected`);
   }

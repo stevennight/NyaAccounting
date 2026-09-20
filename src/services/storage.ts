@@ -25,6 +25,15 @@ function looksLikeTransaction(value: unknown): value is Transaction {
     typeof value.amountMinor === 'number' &&
     Number.isInteger(value.amountMinor) &&
     typeof value.currency === 'string' &&
+    (value.convertedAmountMinor === undefined ||
+      (typeof value.convertedAmountMinor === 'number' &&
+        Number.isInteger(value.convertedAmountMinor))) &&
+    (value.convertedCurrency === undefined ||
+      typeof value.convertedCurrency === 'string') &&
+    (value.exchangeRate === undefined ||
+      (typeof value.exchangeRate === 'number' &&
+        Number.isFinite(value.exchangeRate) &&
+        value.exchangeRate > 0)) &&
     typeof value.date === 'string' &&
     (value.time === undefined || isLocalTime(value.time)) &&
     typeof value.merchant === 'string'
