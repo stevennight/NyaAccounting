@@ -260,7 +260,7 @@ export function normalizeAppSettings(input: unknown): AppSettings {
         Number.isFinite(rawAi.requestTimeoutMs)
           ? Math.max(
               5_000,
-              Math.min(120_000, Math.round(rawAi.requestTimeoutMs)),
+              Math.min(3_600_000, Math.round(rawAi.requestTimeoutMs)),
             )
           : DEFAULT_AI_SETTINGS.requestTimeoutMs,
       maxConcurrentRecognitions:

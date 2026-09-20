@@ -484,7 +484,7 @@ function validateSettings(value: unknown): AppSettings {
   }
   expectSafeInteger(ai.requestTimeoutMs, `${path}.ai.requestTimeoutMs`, {
     minimum: 1,
-    maximum: 600_000,
+    maximum: 3_600_000,
   });
   if (ai.maxConcurrentRecognitions !== undefined) {
     expectSafeInteger(

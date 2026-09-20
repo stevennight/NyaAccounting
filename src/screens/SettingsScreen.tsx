@@ -248,6 +248,9 @@ export function SettingsScreen({
   const [maxConcurrentRecognitions, setMaxConcurrentRecognitions] = useState(
     String(settings.ai.maxConcurrentRecognitions),
   );
+  const [requestTimeoutSeconds, setRequestTimeoutSeconds] = useState(
+    String(Math.round(settings.ai.requestTimeoutMs / 1000)),
+  );
   const [reasoningEffort, setReasoningEffort] = useState(
     settings.ai.reasoningEffort,
   );
@@ -350,11 +353,15 @@ export function SettingsScreen({
       settings.ai.transcriptionModel ?? 'gpt-4o-mini-transcribe',
     );
     setMaxConcurrentRecognitions(String(settings.ai.maxConcurrentRecognitions));
+    setRequestTimeoutSeconds(
+      String(Math.round(settings.ai.requestTimeoutMs / 1000)),
+    );
     setReasoningEffort(settings.ai.reasoningEffort);
   }, [
     settings.ai.endpoint,
     settings.ai.maxConcurrentRecognitions,
     settings.ai.model,
+    settings.ai.requestTimeoutMs,
     settings.ai.reasoningEffort,
     settings.ai.transcriptionModel,
     settings.currency,
@@ -413,6 +420,18 @@ export function SettingsScreen({
       setNotice({ tone: 'danger', message: '批量识别并发数需要是 1 到 8 之间的整数。' });
       return;
     }
+    const timeoutSeconds = Number(requestTimeoutSeconds);
+    if (
+      !Number.isInteger(timeoutSeconds) ||
+      timeoutSeconds < 5 ||
+      timeoutSeconds > 3600
+    ) {
+      setNotice({
+        tone: 'danger',
+        message: 'AI 请求超时时间需要是 5 到 3600 秒之间的整数。',
+      });
+      return;
+    }
     setSavingSettings(true);
     setNotice(null);
     try {
@@ -423,6 +442,7 @@ export function SettingsScreen({
           model: model.trim(),
           transcriptionModel: transcriptionModel.trim(),
           reasoningEffort,
+          requestTimeoutMs: timeoutSeconds * 1000,
           maxConcurrentRecognitions: concurrency,
         },
       });
@@ -533,7 +553,13 @@ export function SettingsScreen({
           model,
           reasoningEffort,
           apiKey,
-          timeoutMs: settings.ai.requestTimeoutMs,
+          timeoutMs: (() => {
+            const seconds = Number(requestTimeoutSeconds);
+            if (!Number.isInteger(seconds) || seconds < 5 || seconds > 3600) {
+              throw new Error('AI 请求超时时间需要是 5 到 3600 秒之间的整数。');
+            }
+            return seconds * 1000;
+          })(),
         },
         { forceReasoningProbe: true },
       );
@@ -987,7 +1013,11 @@ export function SettingsScreen({
               theme={theme}
               icon="sparkles-outline"
               title="AI 识别"
-              detail={settings.ai.enabled ? `已启用 · 最大并发 ${settings.ai.maxConcurrentRecognitions}` : '未启用'}
+              detail={
+                settings.ai.enabled
+                  ? `已启用 · 超时 ${Math.round(settings.ai.requestTimeoutMs / 1000)} 秒 · 最大并发 ${settings.ai.maxConcurrentRecognitions}`
+                  : '未启用'
+              }
               onPress={() => onOpenSection?.('ai')}
               testID="settings-section-ai"
             />
@@ -1187,6 +1217,16 @@ export function SettingsScreen({
           autoCorrect={false}
           placeholder="gpt-4.1-mini"
           testID="settings-model"
+        />
+        <FormField
+          theme={theme}
+          label="AI 请求超时时间（秒）"
+          value={requestTimeoutSeconds}
+          onChangeText={setRequestTimeoutSeconds}
+          keyboardType="number-pad"
+          placeholder="45"
+          hint="单次 AI 请求最多等待的时间，范围为 5 到 3600 秒。处理较慢或图片较多时可以适当调大。"
+          testID="settings-request-timeout"
         />
         <FormField
           theme={theme}

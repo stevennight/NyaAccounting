@@ -1447,11 +1447,11 @@ function validateConfig(
   if (
     !Number.isInteger(timeoutMs) ||
     timeoutMs < 5_000 ||
-    timeoutMs > 180_000
+    timeoutMs > 3_600_000
   ) {
     throw new AiServiceError(
       'invalid_config',
-      'The AI request timeout must be between 5 and 180 seconds.',
+      'The AI request timeout must be between 5 and 3600 seconds.',
     );
   }
 
