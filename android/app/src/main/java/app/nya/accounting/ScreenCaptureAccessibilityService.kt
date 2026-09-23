@@ -12,11 +12,18 @@ import android.view.accessibility.AccessibilityEvent
 import android.content.Intent
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class ScreenCaptureAccessibilityService : AccessibilityService() {
   @Volatile
   private var capturing = false
   private val mainHandler = Handler(Looper.getMainLooper())
+  // ScreenshotResult contains a hardware buffer and converting/compressing it
+  // can take hundreds of milliseconds on a large display. Keep that work off
+  // the accessibility service's main thread so Android does not treat a slow
+  // capture as a hung service.
+  private val captureExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
   override fun onServiceConnected() {
     super.onServiceConnected()
@@ -25,10 +32,20 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
 
   override fun onDestroy() {
     mainHandler.removeCallbacksAndMessages(null)
+    captureExecutor.shutdownNow()
+    capturing = false
     if (instance === this) {
       instance = null
     }
     super.onDestroy()
+  }
+
+  override fun onUnbind(intent: Intent?): Boolean {
+    capturing = false
+    if (instance === this) {
+      instance = null
+    }
+    return super.onUnbind(intent)
   }
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -51,42 +68,63 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     dismissNotificationShadeForAction()
     // The notification shade closes with an animation. Capture after it has
     // settled so the system panel is not included in the bitmap.
-    mainHandler.postDelayed({
-      if (capturing && instance === this) {
-        try {
-          takeScreenshot(
-            Display.DEFAULT_DISPLAY,
-            mainExecutor,
-            object : TakeScreenshotCallback {
-              override fun onSuccess(screenshot: ScreenshotResult) {
-                try {
-                  saveScreenshot(screenshot)
-                } catch (error: Exception) {
-                  deliverError(error.message ?: "无法保存当前页面截图。")
-                } finally {
-                  capturing = false
-                  onFinished?.invoke()
-                }
-              }
-
-              override fun onFailure(errorCode: Int) {
-                capturing = false
-                deliverError("系统截图失败（错误码 $errorCode），请重试。")
-                onFinished?.invoke()
-              }
-            },
-          )
-        } catch (error: Exception) {
-          capturing = false
-          deliverError(error.message ?: "系统截图暂时不可用，请重试。")
-          onFinished?.invoke()
-        }
-      } else {
-        onFinished?.invoke()
-      }
-    }, SCREENSHOT_DELAY_MILLIS)
+    mainHandler.postDelayed({ requestScreenshot(onFinished, 0) }, SCREENSHOT_DELAY_MILLIS)
     return true
   }
+
+  private fun requestScreenshot(onFinished: (() -> Unit)?, attempt: Int) {
+    if (!capturing || instance !== this) {
+      onFinished?.invoke()
+      return
+    }
+    try {
+      takeScreenshot(
+        Display.DEFAULT_DISPLAY,
+        captureExecutor,
+        object : TakeScreenshotCallback {
+          override fun onSuccess(screenshot: ScreenshotResult) {
+            try {
+              saveScreenshot(screenshot)
+            } catch (error: Exception) {
+              deliverError(error.message ?: "无法保存当前页面截图。")
+            } finally {
+              capturing = false
+              onFinished?.invoke()
+            }
+          }
+
+          override fun onFailure(errorCode: Int) {
+            if (attempt < MAX_SCREENSHOT_RETRIES && isRetryableScreenshotError(errorCode)) {
+              mainHandler.postDelayed(
+                { requestScreenshot(onFinished, attempt + 1) },
+                RETRY_DELAY_MILLIS,
+              )
+              return
+            }
+            capturing = false
+            deliverError("系统截图失败（错误码 $errorCode），请重试。")
+            onFinished?.invoke()
+          }
+        },
+      )
+    } catch (error: Exception) {
+      if (attempt < MAX_SCREENSHOT_RETRIES) {
+        mainHandler.postDelayed(
+          { requestScreenshot(onFinished, attempt + 1) },
+          RETRY_DELAY_MILLIS,
+        )
+      } else {
+        capturing = false
+        deliverError(error.message ?: "系统截图暂时不可用，请重试。")
+        onFinished?.invoke()
+      }
+    }
+  }
+
+  private fun isRetryableScreenshotError(errorCode: Int): Boolean =
+    errorCode == ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR ||
+      errorCode == ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS ||
+      errorCode == ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT
 
   fun dismissNotificationShadeForAction() {
     // This global action is available before Android 12 as well. Calling it
@@ -146,6 +184,8 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
 
   companion object {
     private const val SCREENSHOT_DELAY_MILLIS = 650L
+    private const val RETRY_DELAY_MILLIS = 400L
+    private const val MAX_SCREENSHOT_RETRIES = 2
 
     @Volatile
     var instance: ScreenCaptureAccessibilityService? = null
