@@ -279,6 +279,10 @@ export function SettingsScreen({
   const [pendingScreenshotCount, setPendingScreenshotCount] = useState(0);
   const [newPaymentChannelLabel, setNewPaymentChannelLabel] = useState('');
 
+  useEffect(() => {
+    setNotice(null);
+  }, [section]);
+
   const updateSettingSafely = (
     patch: Parameters<typeof updateSettings>[0],
   ) => {
@@ -975,7 +979,7 @@ export function SettingsScreen({
       testID="settings-screen"
     >
 
-      {notice ? (
+      {notice && section !== 'system' ? (
         <View style={styles.notice}>
           <InlineNotice theme={theme} tone={notice.tone} message={notice.message} />
         </View>
@@ -1347,8 +1351,8 @@ export function SettingsScreen({
         />
         <InlineNotice
           theme={theme}
-          tone={updateStatusTone}
-          message={updateStatusMessage}
+          tone={notice?.tone ?? updateStatusTone}
+          message={notice?.message ?? updateStatusMessage}
         />
         <View style={styles.buttonRow}>
           <AppButton

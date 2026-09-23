@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   },
   inner: {
     width: '100%',
-    maxWidth: 800,
+    maxWidth: 960,
     alignSelf: 'center',
     flexDirection: 'row',
     justifyContent: 'space-around',

@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: 800,
+    maxWidth: 960,
     alignSelf: 'center',
   },
   header: {
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   },
   headerInner: {
     width: '100%',
-    maxWidth: 800,
+    maxWidth: 960,
     alignSelf: 'center',
     paddingBottom: spacing.sm,
   },
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   },
   footerInner: {
     width: '100%',
-    maxWidth: 800,
+    maxWidth: 960,
     alignSelf: 'center',
     paddingTop: spacing.sm,
   },
