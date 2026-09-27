@@ -14,7 +14,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'food',
     label: '吃喝',
     shortLabel: '吃喝',
-    color: '#F97316',
+    color: '#E07A3F',
     icon: 'restaurant',
     subcategories: [
       { id: 'dining', label: '正餐' },
@@ -27,7 +27,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'digital',
     label: '数字与订阅',
     shortLabel: '订阅',
-    color: '#2563EB',
+    color: '#4A78C2',
     icon: 'laptop',
     subcategories: [
       { id: 'software', label: '软件' },
@@ -42,7 +42,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'transport',
     label: '交通',
     shortLabel: '交通',
-    color: '#0D9488',
+    color: '#2E9A8C',
     icon: 'directions-car',
     subcategories: [
       { id: 'public_transport', label: '公共交通' },
@@ -55,7 +55,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'daily',
     label: '日用购物',
     shortLabel: '日用',
-    color: '#DB2777',
+    color: '#C95B8C',
     icon: 'shopping-bag',
     subcategories: [
       { id: 'household', label: '日用品' },
@@ -67,7 +67,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'housing',
     label: '居住',
     shortLabel: '居住',
-    color: '#7C3AED',
+    color: '#7E6BC4',
     icon: 'home',
     subcategories: [
       { id: 'rent', label: '房租' },
@@ -79,7 +79,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'health',
     label: '医疗健康',
     shortLabel: '健康',
-    color: '#DC2626',
+    color: '#D0544E',
     icon: 'medical-services',
     subcategories: [
       { id: 'medical', label: '看病买药' },
@@ -91,7 +91,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'learning',
     label: '学习成长',
     shortLabel: '学习',
-    color: '#CA8A04',
+    color: '#C49A2C',
     icon: 'menu-book',
     subcategories: [
       { id: 'books', label: '书籍' },
@@ -103,7 +103,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'leisure',
     label: '休闲娱乐',
     shortLabel: '娱乐',
-    color: '#16A34A',
+    color: '#4E9E5A',
     icon: 'sports-esports',
     subcategories: [
       { id: 'movies', label: '电影演出' },
@@ -115,7 +115,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'social',
     label: '人情社交',
     shortLabel: '社交',
-    color: '#E11D48',
+    color: '#A0668E',
     icon: 'redeem',
     subcategories: [
       { id: 'gifts', label: '礼物' },
@@ -127,7 +127,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'travel',
     label: '旅行',
     shortLabel: '旅行',
-    color: '#0891B2',
+    color: '#3A92B8',
     icon: 'flight',
     subcategories: [
       { id: 'lodging', label: '住宿' },
@@ -139,7 +139,7 @@ export const CATEGORY_DEFINITIONS: readonly CategoryDefinition[] = [
     id: 'other',
     label: '其他',
     shortLabel: '其他',
-    color: '#64748B',
+    color: '#7A808C',
     icon: 'more-horiz',
     subcategories: [],
   },
@@ -149,7 +149,42 @@ const MAX_CATEGORY_ID_LENGTH = 100;
 const MAX_CATEGORY_LABEL_LENGTH = 100;
 const MAX_CATEGORIES = 100;
 const MAX_SUBCATEGORIES_PER_CATEGORY = 100;
-const DEFAULT_CATEGORY_COLOR = '#64748B';
+const DEFAULT_CATEGORY_COLOR = '#7A808C';
+
+/** Colors offered when creating or editing a category. */
+export const CATEGORY_COLOR_PALETTE: readonly string[] = [
+  ...CATEGORY_DEFINITIONS.map((category) => category.color),
+  '#5C6BC0',
+  '#8D6E63',
+];
+
+/**
+ * Built-in categories shipped with saturated colors before the 1.0.15
+ * palette. A built-in category still using its old default is moved to the
+ * new default; colors the user picked are left alone.
+ */
+const LEGACY_DEFAULT_CATEGORY_COLORS: Readonly<Record<string, string>> = {
+  food: '#F97316',
+  digital: '#2563EB',
+  transport: '#0D9488',
+  daily: '#DB2777',
+  housing: '#7C3AED',
+  health: '#DC2626',
+  learning: '#CA8A04',
+  leisure: '#16A34A',
+  social: '#E11D48',
+  travel: '#0891B2',
+  other: '#64748B',
+};
+
+function migrateCategoryColor(id: string, color: string): string {
+  if (LEGACY_DEFAULT_CATEGORY_COLORS[id] !== color) {
+    return color;
+  }
+  return (
+    CATEGORY_DEFINITIONS.find((category) => category.id === id)?.color ?? color
+  );
+}
 const DEFAULT_CATEGORY_ICON = 'more-horiz';
 
 function normalizedText(
@@ -262,7 +297,7 @@ export function normalizeCategoryDefinitions(
       color:
         typeof record.color === 'string' &&
         /^#[0-9a-f]{6}$/i.test(record.color.trim())
-          ? record.color.trim().toUpperCase()
+          ? migrateCategoryColor(id, record.color.trim().toUpperCase())
           : DEFAULT_CATEGORY_COLOR,
       icon:
         normalizedText(record.icon, MAX_CATEGORY_ID_LENGTH) ??

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -14,6 +15,8 @@ import { InlineNotice } from '../components/InlineNotice';
 import { PageHeader } from '../components/PageHeader';
 import { Screen } from '../components/Screen';
 import { SectionHeader } from '../components/SectionHeader';
+import { Ionicons } from '@expo/vector-icons';
+import { CATEGORY_COLOR_PALETTE } from '../domain/categories';
 import { CATEGORY_IDS } from '../domain/types';
 import type {
   CategoryDefinition,
@@ -22,13 +25,7 @@ import type {
 import { createDomainId } from '../domain/normalize';
 import { useHardwareBack } from '../hooks/useHardwareBack';
 import { useAppStore } from '../store/AppStore';
-import {
-  AppTheme,
-  categoryColors,
-  radii,
-  spacing,
-  typography,
-} from '../theme';
+import { AppTheme, radii, spacing, typography } from '../theme';
 
 type CategorySettingsScreenProps = {
   theme: AppTheme;
@@ -68,7 +65,7 @@ function createCategory(index: number): CategoryDefinition {
     id: createDomainId('category'),
     label: '',
     shortLabel: '',
-    color: categoryColors[index % categoryColors.length],
+    color: CATEGORY_COLOR_PALETTE[index % CATEGORY_COLOR_PALETTE.length],
     icon: 'pricetag-outline',
     subcategories: [],
   };
@@ -348,6 +345,34 @@ export function CategorySettingsScreen({
             maxLength={100}
             testID="category-short-name"
           />
+          <View style={styles.colorField}>
+            <Text style={[styles.colorLabel, { color: theme.colors.text }]}>颜色</Text>
+            <View style={styles.colorGrid} accessibilityRole="radiogroup">
+              {CATEGORY_COLOR_PALETTE.map((color) => {
+                const selected = form.color.toUpperCase() === color.toUpperCase();
+                return (
+                  <Pressable
+                    key={color}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`颜色 ${color}`}
+                    accessibilityState={{ checked: selected }}
+                    onPress={() => setForm({ ...form, color })}
+                    style={[
+                      styles.colorOption,
+                      {
+                        backgroundColor: color,
+                        borderColor: selected ? theme.colors.text : 'transparent',
+                      },
+                    ]}
+                  >
+                    {selected ? (
+                      <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -540,9 +565,29 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   colorSwatch: {
-    width: 12,
-    height: 36,
-    borderRadius: radii.sm,
+    width: 24,
+    height: 24,
+    borderRadius: radii.pill,
+  },
+  colorField: {
+    gap: spacing.sm,
+  },
+  colorLabel: {
+    fontSize: typography.label,
+    fontWeight: '600',
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  colorOption: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.pill,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   categoryCopy: {
     flex: 1,

@@ -21,6 +21,8 @@ type ChoiceChipsProps<T extends string> = {
   options: ReadonlyArray<ChoiceOption<T>>;
   onChange: (value: T) => void;
   scrollable?: boolean;
+  /** Placed on a colored container (e.g. the amount card): selected chips use the page color. */
+  onContainer?: boolean;
   testID?: string;
 };
 
@@ -30,8 +32,12 @@ export function ChoiceChips<T extends string>({
   options,
   onChange,
   scrollable = true,
+  onContainer = false,
   testID,
 }: ChoiceChipsProps<T>) {
+  const selectedBackground = onContainer
+    ? theme.colors.background
+    : theme.colors.primarySoft;
   const scrollRef = useRef<ScrollView>(null);
 
   const scrollSelectedIntoView = (
@@ -77,12 +83,10 @@ export function ChoiceChips<T extends string>({
               !scrollable && styles.segmentedChip,
               {
                 // M3 filter chips (scrollable) / segmented button.
-                backgroundColor: selected
-                  ? theme.colors.primarySoft
-                  : 'transparent',
+                backgroundColor: selected ? selectedBackground : 'transparent',
                 borderColor: selected
-                  ? theme.colors.primarySoft
-                  : scrollable
+                  ? selectedBackground
+                  : scrollable && !onContainer
                     ? theme.colors.border
                     : 'transparent',
                 opacity: pressed ? 0.72 : 1,
@@ -94,7 +98,13 @@ export function ChoiceChips<T extends string>({
               style={[
                 styles.label,
                 {
-                  color: selected ? theme.colors.onPrimarySoft : theme.colors.textMuted,
+                  color: selected
+                    ? onContainer
+                      ? theme.colors.text
+                      : theme.colors.onPrimarySoft
+                    : onContainer
+                      ? theme.colors.onPrimaryContainer
+                      : theme.colors.textMuted,
                   fontWeight: selected ? '600' : '500',
                 },
               ]}

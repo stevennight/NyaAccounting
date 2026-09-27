@@ -130,14 +130,3 @@ export const typography = {
   label: 13,
   caption: 12,
 };
-
-export const categoryColors = [
-  '#3F6CA8',
-  '#C0663F',
-  '#2F8578',
-  '#A77A1C',
-  '#8261A8',
-  '#3C8AA8',
-  '#B0506E',
-  '#6B707C',
-];

@@ -31,6 +31,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '../components/AppButton';
+import { AmountHero } from '../components/AmountHero';
 import { CheckboxRow } from '../components/CheckboxRow';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
 import { DuplicateWarning } from '../components/DuplicateWarning';
@@ -2020,7 +2021,6 @@ export function CaptureScreen({
         : fundingSummary.join(' · '),
     ].join(' · ');
     const bookkeepingSummary = [
-      draft.kind ? TRANSACTION_KIND_LABELS[draft.kind] : '需选择交易类型',
       draft.status ? TRANSACTION_STATUS_LABELS[draft.status] : '需选择交易状态',
       draft.isUnexpected ? '预期外' : null,
       draft.recurringExpenseId ? '已关联固定支出' : null,
@@ -2079,14 +2079,28 @@ export function CaptureScreen({
               </View>
             </View>
           ) : (
-            <AppButton
-              theme={theme}
-              label={saveLabel}
-              icon="checkmark-circle-outline"
-              onPress={() => void saveDraft(false)}
-              loading={saving}
-              testID="capture-save"
-            />
+            <View style={styles.stickyActionRow}>
+              <View style={styles.stickyDiscard}>
+                <AppButton
+                  theme={theme}
+                  label="舍弃"
+                  onPress={discardCurrentReview}
+                  disabled={saving || recognizing}
+                  variant="secondary"
+                  testID="capture-discard"
+                />
+              </View>
+              <View style={styles.stickySave}>
+                <AppButton
+                  theme={theme}
+                  label={saveLabel}
+                  icon="checkmark"
+                  onPress={() => void saveDraft(false)}
+                  loading={saving}
+                  testID="capture-save"
+                />
+              </View>
+            </View>
           )
         }
         testID="capture-review-screen"
@@ -2100,6 +2114,47 @@ export function CaptureScreen({
             />
           </View>
         ) : null}
+
+        <View style={styles.heroSpacing}>
+          <AmountHero
+            theme={theme}
+            header={
+              <View style={styles.heroKind}>
+                <ChoiceChips
+                  theme={theme}
+                  value={draft.kind}
+                  options={kindOptions}
+                  onChange={(value) =>
+                    updateDraft({
+                      kind: value,
+                      ...(value !== 'expense' ? { isUnexpected: undefined } : {}),
+                    })
+                  }
+                  onContainer
+                  testID="capture-kind"
+                />
+                {!draft.kind ? (
+                  <Text style={[styles.help, { color: theme.colors.danger }]}>
+                    AI 没有确定交易类型，请选择。
+                  </Text>
+                ) : null}
+              </View>
+            }
+            amount={amountInput}
+            onChangeAmount={updateAmount}
+            amountError={amountError}
+            currency={draft.currency ?? ''}
+            onChangeCurrency={updateCurrency}
+            currencyError={currencyError}
+            date={draft.date ?? ''}
+            onChangeDate={(value) => updateDraft({ date: value || null })}
+            dateError={dateError}
+            time={timeInput}
+            onChangeTime={setTimeInput}
+            timeError={timeError}
+            testIDPrefix="capture"
+          />
+        </View>
 
         {reviewAsset ? (
           <Pressable
@@ -2162,66 +2217,6 @@ export function CaptureScreen({
             />
           </View>
         ) : null}
-
-        <View style={styles.section}>
-          <SectionHeader theme={theme} title="金额与时间" />
-          <View style={styles.fieldRow}>
-            <View style={styles.fieldWide}>
-              <FormField
-                theme={theme}
-                label="金额"
-                value={amountInput}
-                onChangeText={updateAmount}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                error={amountError}
-                testID="capture-amount"
-              />
-            </View>
-            <View style={styles.fieldNarrow}>
-              <FormField
-                theme={theme}
-                label="币种"
-                value={draft.currency ?? ''}
-                onChangeText={updateCurrency}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                maxLength={3}
-                placeholder="CNY"
-                error={currencyError}
-                testID="capture-currency"
-              />
-            </View>
-          </View>
-          <View style={styles.fieldRow}>
-            <View style={styles.fieldHalf}>
-              <FormField
-                theme={theme}
-                label="日期"
-                value={draft.date ?? ''}
-                onChangeText={(value) => updateDraft({ date: value || null })}
-                placeholder="YYYY-MM-DD"
-                autoCorrect={false}
-                keyboardType="numbers-and-punctuation"
-                error={dateError}
-                testID="capture-date"
-              />
-            </View>
-            <View style={styles.fieldHalf}>
-              <FormField
-                theme={theme}
-                label="时间（可选）"
-                value={timeInput}
-                onChangeText={setTimeInput}
-                placeholder="HH:mm:ss"
-                autoCorrect={false}
-                keyboardType="numbers-and-punctuation"
-                error={timeError}
-                testID="capture-time"
-              />
-            </View>
-          </View>
-        </View>
 
         <View style={styles.section}>
           <SectionHeader theme={theme} title="消费内容" />
@@ -2362,28 +2357,6 @@ export function CaptureScreen({
             onToggle={() => setBookkeepingExpanded((current) => !current)}
             testID="capture-bookkeeping-disclosure"
           >
-          <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>
-            交易类型
-          </Text>
-          {!draft.kind ? (
-            <InlineNotice
-              theme={theme}
-              tone="warning"
-              message="AI 没有确定交易类型，请手动选择。"
-            />
-          ) : null}
-          <ChoiceChips
-            theme={theme}
-            value={draft.kind}
-            options={kindOptions}
-            onChange={(value) =>
-              updateDraft({
-                kind: value,
-                ...(value !== 'expense' ? { isUnexpected: undefined } : {}),
-              })
-            }
-            testID="capture-kind"
-          />
           {draft.kind === 'expense' ? (
             <CheckboxRow
               theme={theme}
@@ -2476,20 +2449,8 @@ export function CaptureScreen({
           }}
         />
 
-        {duplicateCandidates.length === 0 ? (
+        {duplicateCandidates.length === 0 && reviewQueue[0] ? (
           <View style={styles.secondaryActions}>
-            <View style={styles.secondaryActionItem}>
-              <AppButton
-                theme={theme}
-                label="舍弃此笔"
-                icon="trash-outline"
-                onPress={discardCurrentReview}
-                disabled={saving || recognizing}
-                variant="quiet"
-                compact
-                testID="capture-discard"
-              />
-            </View>
             {reviewQueue[0] ? (
               <View style={styles.secondaryActionItem}>
                 <AppButton
@@ -3216,5 +3177,19 @@ const styles = StyleSheet.create({
   stickyActionItem: {
     flex: 1,
     minWidth: 0,
+  },
+  stickyDiscard: {
+    flex: 1,
+    minWidth: 0,
+  },
+  stickySave: {
+    flex: 2,
+    minWidth: 0,
+  },
+  heroSpacing: {
+    marginBottom: spacing.lg,
+  },
+  heroKind: {
+    gap: spacing.xs,
   },
 });

@@ -35,6 +35,7 @@ import { paymentChannelOptions } from '../domain/paymentChannels';
 import { AppTheme, spacing, typography } from '../theme';
 import { useHardwareBack } from '../hooks/useHardwareBack';
 import { AppButton } from '../components/AppButton';
+import { AmountHero } from '../components/AmountHero';
 import { ChoiceChips, ChoiceOption } from '../components/ChoiceChips';
 import { DuplicateWarning } from '../components/DuplicateWarning';
 import { FormField } from '../components/FormField';
@@ -485,6 +486,35 @@ export function TransactionEditScreen({
           backDisabled={saving || deleting}
         />
       }
+      footer={
+        <View style={styles.footerRow}>
+          <View style={styles.footerDelete}>
+            <AppButton
+              label="删除"
+              icon="trash-outline"
+              onPress={confirmDelete}
+              theme={theme}
+              variant="secondary"
+              loading={deleting}
+              disabled={saving}
+              testID="edit-delete"
+            />
+          </View>
+          {duplicateCandidates.length === 0 ? (
+            <View style={styles.footerSave}>
+              <AppButton
+                label="保存修改"
+                icon="checkmark"
+                onPress={() => void save(false)}
+                theme={theme}
+                loading={saving}
+                disabled={deleting}
+                testID="edit-save"
+              />
+            </View>
+          ) : null}
+        </View>
+      }
       testID="transaction-edit-screen"
     >
       {notice ? (
@@ -494,77 +524,54 @@ export function TransactionEditScreen({
       ) : null}
 
       <View style={styles.section}>
-        <SectionHeader title="金额与时间" theme={theme} />
-        <View style={styles.twoColumns}>
-          <View style={styles.flexField}>
-            <FormField
+        <AmountHero
+          theme={theme}
+          header={
+            <ChoiceChips
               theme={theme}
-              label="金额"
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="decimal-pad"
-              error={amountError}
-              hint={amountHint}
-              testID="edit-amount"
+              value={kind}
+              options={kindOptions}
+              onChange={(value) => {
+                setKind(value);
+                if (value !== 'expense') {
+                  setIsUnexpected(false);
+                }
+              }}
+              onContainer
+              testID="edit-kind"
             />
-          </View>
-          <View style={styles.last4Field}>
-            <FormField
-              theme={theme}
-              label="币种"
-              value={currency}
-              onChangeText={(value) => setCurrency(value.trim().toUpperCase())}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={3}
-              error={currencyError}
-              testID="edit-currency"
-            />
-          </View>
+          }
+          amount={amount}
+          onChangeAmount={setAmount}
+          amountError={amountError}
+          hint={amountHint}
+          currency={currency}
+          onChangeCurrency={(value) => setCurrency(value.trim().toUpperCase())}
+          currencyError={currencyError}
+          date={date}
+          onChangeDate={setDate}
+          dateError={dateError}
+          time={time}
+          onChangeTime={setTime}
+          timeError={timeError}
+          testIDPrefix="edit"
+        />
+      {isForeignCurrency ? (
+        <View style={styles.conversionBox}>
+          <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>默认币种补录（{defaultCurrency}）</Text>
+          <FormField
+            theme={theme}
+            label={`折合金额（${defaultCurrency}）`}
+            value={convertedAmount}
+            onChangeText={setConvertedAmount}
+            keyboardType="decimal-pad"
+            placeholder="例如：52.80"
+            error={conversionError}
+            hint={conversionRate ? `记录汇率：1 ${currency} ≈ ${conversionRate.toFixed(6)} ${defaultCurrency}` : '补录后会计入默认币种统计和预算'}
+            testID="edit-converted-amount"
+          />
         </View>
-        {isForeignCurrency ? (
-          <View style={styles.conversionBox}>
-            <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>默认币种补录（{defaultCurrency}）</Text>
-            <FormField
-              theme={theme}
-              label={`折合金额（${defaultCurrency}）`}
-              value={convertedAmount}
-              onChangeText={setConvertedAmount}
-              keyboardType="decimal-pad"
-              placeholder="例如：52.80"
-              error={conversionError}
-              hint={conversionRate ? `记录汇率：1 ${currency} ≈ ${conversionRate.toFixed(6)} ${defaultCurrency}` : '补录后会计入默认币种统计和预算'}
-              testID="edit-converted-amount"
-            />
-          </View>
-        ) : null}
-        <View style={styles.twoColumns}>
-          <View style={styles.flexField}>
-            <FormField
-              theme={theme}
-              label="日期"
-              value={date}
-              onChangeText={setDate}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              error={dateError}
-              testID="edit-date"
-            />
-          </View>
-          <View style={styles.last4Field}>
-            <FormField
-              theme={theme}
-              label="时间（可选）"
-              value={time}
-              onChangeText={setTime}
-              placeholder="HH:mm:ss"
-              autoCapitalize="none"
-              keyboardType="numbers-and-punctuation"
-              error={timeError}
-              testID="edit-time"
-            />
-          </View>
-        </View>
+      ) : null}
       </View>
 
       <View style={styles.section}>
@@ -668,19 +675,6 @@ export function TransactionEditScreen({
 
       <View style={styles.section}>
         <SectionHeader title="记账规则" theme={theme} />
-        <Text style={[styles.fieldLabel, { color: theme.colors.text }]}>交易类型</Text>
-        <ChoiceChips
-          theme={theme}
-          value={kind}
-          options={kindOptions}
-          onChange={(value) => {
-            setKind(value);
-            if (value !== 'expense') {
-              setIsUnexpected(false);
-            }
-          }}
-          testID="edit-kind"
-        />
         {kind === 'expense' ? (
           <CheckboxRow
             theme={theme}
@@ -740,34 +734,23 @@ export function TransactionEditScreen({
         onReview={() => setDuplicateCandidates([])}
       />
 
-      <View style={styles.actions}>
-        {duplicateCandidates.length === 0 ? (
-          <AppButton
-            label="保存修改"
-            icon="save-outline"
-            onPress={() => void save(false)}
-            theme={theme}
-            loading={saving}
-            disabled={deleting}
-            testID="edit-save"
-          />
-        ) : null}
-        <AppButton
-          label="删除这笔"
-          icon="trash-outline"
-          onPress={confirmDelete}
-          theme={theme}
-          variant="danger"
-          loading={deleting}
-          disabled={saving}
-          testID="edit-delete"
-        />
-      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  footerRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  footerDelete: {
+    flex: 1,
+    minWidth: 0,
+  },
+  footerSave: {
+    flex: 2,
+    minWidth: 0,
+  },
   notice: {
     marginBottom: spacing.lg,
   },

@@ -25,6 +25,20 @@ const CUSTOM_CATEGORIES = [
 ];
 
 describe('settings normalization', () => {
+  test('moves built-in categories off the legacy default colors only', () => {
+    const food = domain.CATEGORY_DEFINITIONS.find((category) => category.id === 'food');
+    const [migrated, picked, custom] = domain.normalizeCategoryDefinitions([
+      { ...food, color: '#f97316' },
+      { ...food, id: 'transport', label: '交通', color: '#123456' },
+      CUSTOM_CATEGORIES[0],
+    ]);
+
+    assert.equal(migrated.color, food.color);
+    assert.notEqual(food.color, '#F97316');
+    assert.equal(picked.color, '#123456');
+    assert.equal(custom.color, '#F97316');
+  });
+
   test('keeps old AI settings compatible and accepts a reasoning choice', () => {
     const legacy = domain.normalizeAppSettings({
       ai: { model: 'gpt-5.6-sol' },
