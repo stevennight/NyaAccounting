@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   detail: {
     fontSize: typography.caption,

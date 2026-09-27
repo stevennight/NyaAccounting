@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.sectionTitle,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   subtitle: {
     fontSize: typography.caption,
@@ -185,11 +185,11 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 140,
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   score: {
     fontSize: typography.label,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   detail: {
     fontSize: typography.label,

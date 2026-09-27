@@ -64,8 +64,8 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.pageTitle,
-    fontWeight: '900',
-    lineHeight: 34,
+    fontWeight: '500',
+    lineHeight: 32,
   },
   subtitle: {
     fontSize: typography.label,

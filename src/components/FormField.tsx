@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   input: {
     minHeight: 48,

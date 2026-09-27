@@ -400,8 +400,7 @@ export function StatsScreen({ theme }: StatsScreenProps) {
 const styles = StyleSheet.create({
   monthSwitcher: {
     minHeight: 50,
-    borderWidth: 1,
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     paddingHorizontal: spacing.xs,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -410,10 +409,9 @@ const styles = StyleSheet.create({
   },
   month: {
     fontSize: typography.sectionTitle,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   kpis: {
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.lg,
     flexDirection: 'row',
@@ -421,7 +419,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   unexpectedPanel: {
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.lg,
     gap: spacing.lg,
@@ -437,7 +434,7 @@ const styles = StyleSheet.create({
   },
   unexpectedAmount: {
     fontSize: 26,
-    fontWeight: '900',
+    fontWeight: '600',
   },
   unexpectedShareBlock: {
     alignItems: 'flex-end',
@@ -445,7 +442,7 @@ const styles = StyleSheet.create({
   },
   unexpectedShare: {
     fontSize: typography.sectionTitle,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   unexpectedEmpty: {
     fontSize: typography.caption,
@@ -466,11 +463,11 @@ const styles = StyleSheet.create({
   unexpectedCategoryLabel: {
     flex: 1,
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   unexpectedCategoryValue: {
     fontSize: typography.label,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   unexpectedCategoryShare: {
     width: 38,
@@ -510,11 +507,11 @@ const styles = StyleSheet.create({
   },
   kpiValue: {
     fontSize: 28,
-    fontWeight: '900',
+    fontWeight: '600',
   },
   kpiDetail: {
     fontSize: typography.sectionTitle,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   count: {
     fontSize: typography.caption,
@@ -556,13 +553,12 @@ const styles = StyleSheet.create({
   legendLabel: {
     flex: 1,
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   legendValue: {
     fontSize: typography.caption,
   },
   chartPanel: {
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.lg,
   },
@@ -581,16 +577,16 @@ const styles = StyleSheet.create({
   merchantRank: {
     width: 20,
     fontSize: typography.caption,
-    fontWeight: '800',
+    fontWeight: '600',
     textAlign: 'center',
   },
   merchantName: {
     flex: 1,
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   merchantAmount: {
     fontSize: typography.label,
-    fontWeight: '800',
+    fontWeight: '600',
   },
 });

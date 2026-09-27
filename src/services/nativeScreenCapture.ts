@@ -1,7 +1,14 @@
 import { NativeModules, Platform } from 'react-native';
 
+export type ScreenCaptureServiceState =
+  | 'running'
+  | 'enabled_not_running'
+  | 'disabled';
+
 type NativeScreenCaptureModule = {
   isAccessibilityEnabled: () => Promise<boolean>;
+  getAccessibilityState: () => Promise<ScreenCaptureServiceState>;
+  isCaptureNotificationEnabled: () => Promise<boolean>;
   openAccessibilitySettings: () => Promise<boolean>;
   showCaptureNotification: () => Promise<boolean>;
   hideCaptureNotification: () => Promise<boolean>;
@@ -28,6 +35,20 @@ export async function isCurrentScreenCaptureEnabled(): Promise<boolean> {
     return false;
   }
   return nativeModule.isAccessibilityEnabled();
+}
+
+export async function getCurrentScreenCaptureState(): Promise<ScreenCaptureServiceState> {
+  if (!nativeScreenCaptureAvailable || !nativeModule) {
+    return 'disabled';
+  }
+  return nativeModule.getAccessibilityState();
+}
+
+export async function isCurrentScreenCaptureNotificationEnabled(): Promise<boolean> {
+  if (!nativeScreenCaptureAvailable || !nativeModule) {
+    return false;
+  }
+  return nativeModule.isCaptureNotificationEnabled();
 }
 
 export async function openCurrentScreenCaptureSettings(): Promise<void> {

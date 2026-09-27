@@ -40,6 +40,10 @@ type TransactionRowProps = {
   paymentChannels?: readonly PaymentChannelDefinition[];
   theme: AppTheme;
   onPress?: () => void;
+  /** Hides the divider under the last row of a grouped list. */
+  last?: boolean;
+  /** Day-grouped lists already show the date in the group header. */
+  showDate?: boolean;
 };
 
 export function TransactionRow({
@@ -48,6 +52,8 @@ export function TransactionRow({
   paymentChannels,
   theme,
   onPress,
+  last = false,
+  showDate = true,
 }: TransactionRowProps) {
   const category = getCategoryDefinition(transaction.categoryId, categories);
   const categoryColor = category?.color ?? theme.colors.primary;
@@ -90,9 +96,11 @@ export function TransactionRow({
     transaction.description?.trim() ? merchant : null,
     category?.label ?? '其他',
     paymentChannelLabel(transaction.paymentChannel, paymentChannels),
-    `${transaction.date.slice(5).replace('-', '/')}${
-      transactionTime ? ` ${transactionTime}` : ''
-    }`,
+    showDate
+      ? `${transaction.date.slice(5).replace('-', '/')}${
+          transactionTime ? ` ${transactionTime}` : ''
+        }`
+      : transactionTime?.slice(0, 5) ?? null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -106,10 +114,14 @@ export function TransactionRow({
       disabled={!onPress}
       style={({ pressed }) => [
         styles.row,
-        { borderBottomColor: theme.colors.border, opacity: pressed ? 0.64 : 1 },
+        {
+          borderBottomColor: theme.colors.border,
+          borderBottomWidth: last ? 0 : StyleSheet.hairlineWidth,
+          opacity: pressed ? 0.64 : 1,
+        },
       ]}
     >
-      <View style={[styles.iconBox, { backgroundColor: `${categoryColor}18` }]}>
+      <View style={[styles.iconBox, { backgroundColor: `${categoryColor}24` }]}>
         <Ionicons
           name={categoryIcons[transaction.categoryId] ?? 'pricetag-outline'}
           size={20}
@@ -179,7 +191,7 @@ const styles = StyleSheet.create({
   iconBox: {
     width: 40,
     height: 40,
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -190,7 +202,7 @@ const styles = StyleSheet.create({
   },
   merchant: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   meta: {
     fontSize: typography.caption,
@@ -202,7 +214,7 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   kind: {
     fontSize: typography.caption,

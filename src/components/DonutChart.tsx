@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 19,
-    fontWeight: '900',
+    fontWeight: '600',
     maxWidth: 110,
   },
   label: {

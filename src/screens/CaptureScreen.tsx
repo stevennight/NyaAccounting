@@ -98,7 +98,14 @@ export type CaptureScreenProps = {
   initialScreenshotUris?: string[] | null;
   initialScreenshotError?: string | null;
   onInitialScreenshotConsumed?: () => void;
+  /**
+   * What the "+" sheet asked for: open the image picker right away, start a
+   * manual draft, or focus the text description.
+   */
+  initialMode?: CaptureEntryMode;
 };
+
+export type CaptureEntryMode = 'pick' | 'manual' | 'text';
 
 type Notice = {
   tone: 'info' | 'warning' | 'danger' | 'success';
@@ -492,6 +499,7 @@ export function CaptureScreen({
   initialScreenshotUris,
   initialScreenshotError,
   onInitialScreenshotConsumed,
+  initialMode,
 }: CaptureScreenProps) {
   const { dataset, addTransaction } = useAppStore();
   const settings = dataset.settings;
@@ -1052,7 +1060,8 @@ export function CaptureScreen({
     });
   }, [settings.ai]);
 
-  const pickImage = useCallback(async () => {
+  /** Resolves to what happened so callers can react to a cancelled picker. */
+  const pickImage = useCallback(async (): Promise<'picked' | 'cancelled' | 'failed'> => {
     cancelExtraction();
     cancelTranscription();
     setPickingImage(true);
@@ -1072,10 +1081,11 @@ export function CaptureScreen({
         !mountedRef.current ||
         leavingRef.current
       ) {
-        return;
+        return 'cancelled';
       }
 
       appendImageAssets(result.assets);
+      return 'picked';
     } catch {
       if (mountedRef.current && !leavingRef.current) {
         setNotice({
@@ -1083,6 +1093,7 @@ export function CaptureScreen({
           message: '无法打开系统图片选择器，请稍后重试。',
         });
       }
+      return 'failed';
     } finally {
       if (mountedRef.current && !leavingRef.current) {
         setPickingImage(false);
@@ -1642,6 +1653,27 @@ export function CaptureScreen({
     textInput,
     voiceTranscript,
   ]);
+
+  const initialModeHandledRef = useRef(false);
+  useEffect(() => {
+    if (initialModeHandledRef.current) {
+      return;
+    }
+    initialModeHandledRef.current = true;
+    if (initialMode === 'pick') {
+      // Cancelling the picker opened straight from the "+" sheet returns to
+      // where the user came from instead of leaving an empty capture page.
+      void pickImage().then((outcome) => {
+        if (outcome === 'cancelled' && mountedRef.current) {
+          onCancel?.();
+        }
+      });
+    } else if (initialMode === 'manual') {
+      beginManualEntry();
+    }
+    // Runs once on mount; later changes to the callbacks must not re-trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const updateAmount = useCallback(
     (value: string) => {
@@ -2698,6 +2730,7 @@ export function CaptureScreen({
             onChangeText={updateTextInputFromUser}
             multiline
             placeholder="例如：今天午餐 32 元，微信支付"
+            autoFocus={initialMode === 'text'}
             hint="没有截图时，也可以只填写文字；有截图时，文字补充会优先作为你的事实说明。"
             testID="capture-text"
           />
@@ -2918,7 +2951,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   composer: {
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.lg,
     gap: spacing.lg,
@@ -2938,7 +2970,6 @@ const styles = StyleSheet.create({
   reviewSource: {
     minHeight: 96,
     marginBottom: spacing.lg,
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.sm,
     flexDirection: 'row',
@@ -2958,7 +2989,7 @@ const styles = StyleSheet.create({
   },
   reviewSourceTitle: {
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   reviewStatus: {
     marginBottom: spacing.xl,
@@ -2981,7 +3012,7 @@ const styles = StyleSheet.create({
   },
   disclosureTitle: {
     fontSize: typography.sectionTitle,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   disclosureSummary: {
     fontSize: typography.label,
@@ -3007,7 +3038,7 @@ const styles = StyleSheet.create({
   fullscreenTitle: {
     color: '#FFFFFF',
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   fullscreenClose: {
     width: 42,
@@ -3029,7 +3060,6 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   recognitionProgress: {
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.md,
     gap: spacing.sm,
@@ -3042,7 +3072,7 @@ const styles = StyleSheet.create({
   },
   progressPercent: {
     fontSize: typography.label,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   progressTrack: {
     width: '100%',
@@ -3079,7 +3109,7 @@ const styles = StyleSheet.create({
   },
   imageTileLabel: {
     fontSize: typography.caption,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   imageEditorNavigation: {
     flexDirection: 'row',
@@ -3091,7 +3121,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   activeImageEditor: {
     gap: spacing.md,
@@ -3118,7 +3148,7 @@ const styles = StyleSheet.create({
   },
   recordingText: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   sourceSummary: {
     flexDirection: 'row',
@@ -3135,11 +3165,11 @@ const styles = StyleSheet.create({
   },
   sourcePillText: {
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   fieldLabel: {
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   help: {
     fontSize: typography.caption,

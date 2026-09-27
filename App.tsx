@@ -10,17 +10,16 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-
 import {
-  AppDestination,
-  AppTab,
-  BottomNav,
-} from './src/components/BottomNav';
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
+
+import { AppTab, BottomNav } from './src/components/BottomNav';
+import { CaptureFab, CaptureSheet } from './src/components/CaptureSheet';
 import { Transaction } from './src/domain/types';
-import { CaptureScreen } from './src/screens/CaptureScreen';
+import { CaptureScreen, type CaptureEntryMode } from './src/screens/CaptureScreen';
 import { CategorySettingsScreen } from './src/screens/CategorySettingsScreen';
-import { HomeScreen } from './src/screens/HomeScreen';
 import { RecordsScreen } from './src/screens/RecordsScreen';
 import { RecurringExpensesScreen } from './src/screens/RecurringExpensesScreen';
 import {
@@ -57,14 +56,16 @@ function AppContent() {
   } = useAppStore();
   type AppRoute =
     | { type: 'tab'; tab: AppTab }
-    | { type: 'capture' }
+    | { type: 'capture'; mode?: CaptureEntryMode }
     | { type: 'settings'; section: SettingsDetailSection }
     | { type: 'category-settings' }
     | { type: 'transaction'; transactionId: string }
     | { type: 'recurring-expenses'; startCreating: boolean };
   const [routes, setRoutes] = useState<AppRoute[]>([
-    { type: 'tab', tab: 'home' },
+    { type: 'tab', tab: 'records' },
   ]);
+  const [captureSheetVisible, setCaptureSheetVisible] = useState(false);
+  const insets = useSafeAreaInsets();
   const [pendingScreenshotUris, setPendingScreenshotUris] = useState<string[]>([]);
   const [pendingScreenshotError, setPendingScreenshotError] = useState<string | null>(null);
   const [updateCheck, setUpdateCheck] = useState<AppUpdateCheckResult | null>(null);
@@ -144,7 +145,7 @@ function AppContent() {
       .reverse()
       .find((route): route is Extract<AppRoute, { type: 'tab' }> =>
         route.type === 'tab',
-      )?.tab ?? 'home';
+      )?.tab ?? 'records';
 
   const effectiveColorScheme =
     dataset.settings.theme === 'system'
@@ -184,15 +185,11 @@ function AppContent() {
     -1,
   );
 
-  const openCapture = () => {
-    setRoutes((current) => [...current, { type: 'capture' }]);
+  const openCapture = (mode?: CaptureEntryMode) => {
+    setRoutes((current) => [...current, { type: 'capture', mode }]);
   };
 
-  const changeDestination = (destination: AppDestination) => {
-    if (destination === 'capture') {
-      openCapture();
-      return;
-    }
+  const changeDestination = (destination: AppTab) => {
     setRoutes((current) => {
       if (
         currentRoute.type === 'tab' &&
@@ -365,6 +362,7 @@ function AppContent() {
     content = (
       <CaptureScreen
         theme={theme}
+        initialMode={currentRoute.mode}
         onSaved={goBack}
         onCancel={goBack}
         initialScreenshotUris={pendingScreenshotUris}
@@ -373,25 +371,14 @@ function AppContent() {
       />
     );
   } else {
-    switch (currentRoute.type === 'tab' ? currentRoute.tab : 'home') {
-      case 'home':
-        content = (
-          <HomeScreen
-            theme={theme}
-            onCapture={openCapture}
-            onOpenSettings={() => changeDestination('settings')}
-            onOpenStats={() => changeDestination('stats')}
-            onOpenRecords={() => changeDestination('records')}
-            onOpenTransaction={openTransaction}
-          />
-        );
-        break;
+    switch (currentRoute.type === 'tab' ? currentRoute.tab : 'records') {
       case 'records':
         content = (
           <RecordsScreen
             theme={theme}
-            onAdd={openCapture}
+            onAdd={() => setCaptureSheetVisible(true)}
             onOpenTransaction={openTransaction}
+            onOpenBudgetSettings={() => openSettingsSection('budget')}
           />
         );
         break;
@@ -447,6 +434,21 @@ function AppContent() {
           theme={theme}
         />
       ) : null}
+      {currentRoute.type === 'tab' && activeTab === 'records' ? (
+        <CaptureFab
+          theme={theme}
+          onPress={() => setCaptureSheetVisible(true)}
+          // Navigation bar: 12 top padding + 32 indicator + 4 gap + ~16 label
+          // + bottom inset; keep the FAB 16dp above it.
+          bottomOffset={64 + Math.max(insets.bottom, 12) + 16}
+        />
+      ) : null}
+      <CaptureSheet
+        theme={theme}
+        visible={captureSheetVisible}
+        onClose={() => setCaptureSheetVisible(false)}
+        onSelect={openCapture}
+      />
       <StatusBar style={theme.dark ? 'light' : 'dark'} />
     </View>
   );
@@ -485,7 +487,7 @@ const styles = StyleSheet.create({
   },
   loadingTitle: {
     fontSize: typography.sectionTitle,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   loadingTrack: {
     width: 72,

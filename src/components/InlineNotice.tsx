@@ -22,7 +22,7 @@ export function InlineNotice({ theme, message, tone = 'info' }: InlineNoticeProp
           : 'information-circle';
 
   return (
-    <View style={[styles.notice, { backgroundColor: `${color}18`, borderColor: `${color}55` }]}>
+    <View style={[styles.notice, { backgroundColor: `${color}1F` }]}>
       <Ionicons name={icon} size={19} color={color} />
       <Text style={[styles.message, { color: theme.colors.text }]}>{message}</Text>
     </View>
@@ -31,8 +31,7 @@ export function InlineNotice({ theme, message, tone = 'info' }: InlineNoticeProp
 
 const styles = StyleSheet.create({
   notice: {
-    borderRadius: radii.md,
-    borderWidth: 1,
+    borderRadius: radii.lg,
     padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'flex-start',

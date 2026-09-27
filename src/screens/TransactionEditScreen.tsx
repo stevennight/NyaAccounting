@@ -779,12 +779,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
     borderRadius: 12,
-    borderWidth: 1,
     borderColor: '#CBD5E1',
   },
   fieldLabel: {
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   help: {
     fontSize: typography.caption,

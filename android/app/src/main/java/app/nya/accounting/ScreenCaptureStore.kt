@@ -9,6 +9,7 @@ object ScreenCaptureStore {
   private const val PENDING_URIS = "pending_uris"
   private const val LEGACY_PENDING_URI = "pending_uri"
   private const val PENDING_ERROR = "pending_error"
+  private const val NOTIFICATION_ENABLED = "notification_enabled"
   private const val MAX_PENDING_URIS = 50
 
   @Synchronized
@@ -66,6 +67,21 @@ object ScreenCaptureStore {
     preferences.edit().remove(PENDING_ERROR).apply()
     return value
   }
+
+  // Remembered so the notification can be restored after a reboot or a
+  // process restart, when the accessibility service reconnects.
+  @Synchronized
+  fun setNotificationEnabled(context: Context, enabled: Boolean) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putBoolean(NOTIFICATION_ENABLED, enabled)
+      .apply()
+  }
+
+  @Synchronized
+  fun isNotificationEnabled(context: Context): Boolean =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getBoolean(NOTIFICATION_ENABLED, false)
 
   private fun readPendingUris(preferences: SharedPreferences): List<String> {
     val encoded = preferences.getString(PENDING_URIS, null)

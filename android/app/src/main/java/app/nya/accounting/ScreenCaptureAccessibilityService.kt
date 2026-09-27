@@ -9,7 +9,10 @@ import android.os.Looper
 import android.widget.Toast
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService
@@ -18,6 +21,9 @@ import java.util.concurrent.Executors
 class ScreenCaptureAccessibilityService : AccessibilityService() {
   @Volatile
   private var capturing = false
+  // Set per capture; only one capture runs at a time (see [capturing]).
+  @Volatile
+  private var openAppAfterCapture = false
   private val mainHandler = Handler(Looper.getMainLooper())
   // ScreenshotResult contains a hardware buffer and converting/compressing it
   // can take hundreds of milliseconds on a large display. Keep that work off
@@ -28,6 +34,9 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
   override fun onServiceConnected() {
     super.onServiceConnected()
     instance = this
+    // The system binds this service again after a reboot or a process
+    // restart; bring back the notification the user had turned on.
+    ScreenCaptureNotification.restoreIfEnabled(this)
   }
 
   override fun onDestroy() {
@@ -54,10 +63,19 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
 
   override fun onInterrupt() = Unit
 
-  fun captureCurrentScreen(onFinished: (() -> Unit)? = null): Boolean {
+  /**
+   * [openAppAfterCapture] opens Nya 记账 right after saving (notification
+   * single shot); otherwise the screenshot only joins the pending queue
+   * (floating bubble).
+   */
+  fun captureCurrentScreen(
+    openAppAfterCapture: Boolean = false,
+    onFinished: (() -> Unit)? = null,
+  ): Boolean {
     if (capturing) {
       return false
     }
+    this.openAppAfterCapture = openAppAfterCapture
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
       deliverError("当前 Android 版本不支持直接截取页面。")
       onFinished?.invoke()
@@ -167,13 +185,30 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     }
 
     ScreenCaptureStore.savePendingUri(this, file.toURI().toString())
-    showCaptureSuccessToast()
-    ScreenCaptureNotification.refresh(this)
+    if (openAppAfterCapture) {
+      openApp()
+    } else {
+      showCaptureSuccessToast()
+      ScreenCaptureNotification.refresh(this)
+    }
   }
 
   private fun deliverError(message: String) {
     ScreenCaptureStore.savePendingError(this, message)
-    ScreenCaptureNotification.refresh(this)
+    if (openAppAfterCapture) {
+      openApp()
+    } else {
+      ScreenCaptureNotification.refresh(this)
+    }
+  }
+
+  private fun openApp() {
+    // Accessibility services may start activities from the background, so
+    // this works even though the capture finished outside the app.
+    mainHandler.post {
+      runCatching { ScreenCaptureNotification.openApp(this) }
+        .onFailure { ScreenCaptureNotification.refresh(this) }
+    }
   }
 
   private fun showCaptureSuccessToast() {
@@ -191,5 +226,21 @@ class ScreenCaptureAccessibilityService : AccessibilityService() {
     var instance: ScreenCaptureAccessibilityService? = null
 
     fun isRunning(): Boolean = instance != null
+
+    /**
+     * True when the service is switched on in system settings. It can be on
+     * while [isRunning] is false: after repeated crashes Android keeps it
+     * enabled but stops binding it ("不工作" / "出现故障").
+     */
+    fun isEnabledInSettings(context: Context): Boolean {
+      val component = ComponentName(context, ScreenCaptureAccessibilityService::class.java)
+      return Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+      )
+        ?.split(':')
+        ?.any { ComponentName.unflattenFromString(it.trim()) == component }
+        ?: false
+    }
   }
 }

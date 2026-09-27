@@ -178,7 +178,6 @@ const styles = StyleSheet.create({
   },
   header: {
     flexShrink: 0,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerInner: {
     width: '100%',
@@ -188,7 +187,6 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexShrink: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   footerInner: {
     width: '100%',

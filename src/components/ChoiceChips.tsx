@@ -76,15 +76,12 @@ export function ChoiceChips<T extends string>({
               styles.chip,
               !scrollable && styles.segmentedChip,
               {
+                // M3 filter chips (scrollable) / segmented button.
                 backgroundColor: selected
-                  ? scrollable
-                    ? theme.colors.primarySoft
-                    : theme.colors.surface
-                  : scrollable
-                    ? theme.colors.surface
-                    : 'transparent',
+                  ? theme.colors.primarySoft
+                  : 'transparent',
                 borderColor: selected
-                  ? theme.colors.primary
+                  ? theme.colors.primarySoft
                   : scrollable
                     ? theme.colors.border
                     : 'transparent',
@@ -97,8 +94,8 @@ export function ChoiceChips<T extends string>({
               style={[
                 styles.label,
                 {
-                  color: selected ? theme.colors.primary : theme.colors.text,
-                  fontWeight: selected ? '800' : '600',
+                  color: selected ? theme.colors.onPrimarySoft : theme.colors.textMuted,
+                  fontWeight: selected ? '600' : '500',
                 },
               ]}
             >
@@ -137,13 +134,13 @@ const styles = StyleSheet.create({
   segmented: {
     width: '100%',
     gap: spacing.xs,
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     padding: spacing.xs,
   },
   chip: {
-    minHeight: 44,
+    minHeight: 36,
     minWidth: 52,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -151,6 +148,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   segmentedChip: {
+    minHeight: 40,
+    borderRadius: radii.pill,
     flex: 1,
     minWidth: 0,
     paddingHorizontal: spacing.sm,

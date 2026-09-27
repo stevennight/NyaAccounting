@@ -163,17 +163,25 @@ class ScreenCaptureOverlayService : Service() {
     bubble = view
   }
 
-  fun requestCapture() {
-    val view = bubble ?: return
-    view.visibility = View.INVISIBLE
+  /**
+   * Bubble taps queue screenshots without leaving the current app; the
+   * notification's single-shot action passes [openAppAfterCapture].
+   */
+  fun requestCapture(openAppAfterCapture: Boolean = false) {
     val service = ScreenCaptureAccessibilityService.instance
+    val view = bubble
+    if (view == null) {
+      service?.captureCurrentScreen(openAppAfterCapture = openAppAfterCapture)
+      return
+    }
+    view.visibility = View.INVISIBLE
     if (service == null) {
       view.visibility = View.VISIBLE
       ScreenCaptureStore.savePendingError(this, "截图服务尚未启用，请先在系统无障碍设置中启用 Nya 记账。")
       ScreenCaptureNotification.refresh(this)
       return
     }
-    val accepted = service.captureCurrentScreen {
+    val accepted = service.captureCurrentScreen(openAppAfterCapture = openAppAfterCapture) {
       mainHandler.post {
         view.visibility = View.VISIBLE
         ScreenCaptureNotification.refresh(this@ScreenCaptureOverlayService)

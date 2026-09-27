@@ -37,7 +37,11 @@ export function IconButton({
         styles.button,
         {
           backgroundColor:
-            selected || pressed ? theme.colors.primarySoft : 'transparent',
+            selected
+              ? theme.colors.primarySoft
+              : pressed
+                ? theme.colors.surfaceMuted
+                : 'transparent',
           opacity: disabled ? 0.4 : 1,
         },
       ]}
@@ -45,7 +49,7 @@ export function IconButton({
       <Ionicons
         name={icon}
         size={21}
-        color={selected ? theme.colors.primary : theme.colors.textMuted}
+        color={selected ? theme.colors.onPrimarySoft : theme.colors.textMuted}
       />
     </Pressable>
   );
@@ -55,7 +59,7 @@ const styles = StyleSheet.create({
   button: {
     width: 44,
     height: 44,
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },

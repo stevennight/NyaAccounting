@@ -20,15 +20,25 @@ class ScreenCaptureActionReceiver : BroadcastReceiver() {
   }
 
   private fun capture(context: Context) {
-    ScreenCaptureOverlayService.instance?.requestCapture()
-      ?: ScreenCaptureAccessibilityService.instance?.captureCurrentScreen()
-      ?: run {
-        ScreenCaptureStore.savePendingError(
-          context,
-          "请先在系统无障碍设置中启用 Nya 记账的当前页面截图服务。",
-        )
-        openMainActivity(context)
-      }
+    val service = ScreenCaptureAccessibilityService.instance
+    if (service == null) {
+      ScreenCaptureStore.savePendingError(
+        context,
+        if (ScreenCaptureAccessibilityService.isEnabledInSettings(context)) {
+          "无障碍截图服务已开启但没有运行（系统显示“不工作”或“出现故障”）。请在无障碍设置中把 Nya 记账关闭后重新开启。"
+        } else {
+          "无障碍截图服务已被关闭，请在系统无障碍设置中重新启用 Nya 记账。"
+        },
+      )
+      openMainActivity(context)
+      return
+    }
+    // Hide the floating bubble (if any) so it is not part of the screenshot.
+    ScreenCaptureOverlayService.instance?.let { overlay ->
+      overlay.requestCapture(openAppAfterCapture = true)
+      return
+    }
+    service.captureCurrentScreen(openAppAfterCapture = true)
   }
 
   private fun startOverlay(context: Context) {
@@ -53,17 +63,7 @@ class ScreenCaptureActionReceiver : BroadcastReceiver() {
 
   private fun openMainActivity(context: Context) {
     dismissNotificationShade(context)
-    ScreenCaptureOverlayService.stop(context)
-    ScreenCaptureNotification.refresh(context)
-    context.startActivity(
-      Intent(context, MainActivity::class.java).apply {
-        addFlags(
-          Intent.FLAG_ACTIVITY_NEW_TASK or
-            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-            Intent.FLAG_ACTIVITY_CLEAR_TOP,
-        )
-      },
-    )
+    ScreenCaptureNotification.openApp(context)
   }
 
   private fun dismissNotificationShade(context: Context) {

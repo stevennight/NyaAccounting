@@ -53,13 +53,13 @@ const styles = StyleSheet.create({
   label: {
     flex: 1,
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '500',
   },
   detail: {
     fontSize: typography.caption,
   },
   track: {
-    height: 6,
+    height: 8,
     borderRadius: radii.pill,
     overflow: 'hidden',
   },

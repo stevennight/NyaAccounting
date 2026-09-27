@@ -34,22 +34,23 @@ export function AppButton({
       ? {
           background: theme.colors.primary,
           pressed: theme.colors.primaryPressed,
-          foreground: '#FFFFFF',
+          foreground: theme.colors.onPrimary,
           border: theme.colors.primary,
         }
       : variant === 'danger'
         ? {
             background: theme.colors.danger,
             pressed: `${theme.colors.danger}DD`,
-            foreground: '#FFFFFF',
+            foreground: theme.colors.onDanger,
             border: theme.colors.danger,
           }
         : variant === 'secondary'
           ? {
-              background: theme.colors.surface,
+              // M3 tonal button.
+              background: theme.colors.primarySoft,
               pressed: theme.colors.surfaceMuted,
-              foreground: theme.colors.text,
-              border: theme.colors.border,
+              foreground: theme.colors.onPrimarySoft,
+              border: theme.colors.primarySoft,
             }
           : {
               background: 'transparent',
@@ -92,7 +93,7 @@ export function AppButton({
 
 const styles = StyleSheet.create({
   button: {
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -100,12 +101,12 @@ const styles = StyleSheet.create({
   },
   regular: {
     minHeight: 50,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
   },
   compact: {
     minHeight: 44,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   inner: {
@@ -116,7 +117,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
     textAlign: 'center',
   },
 });

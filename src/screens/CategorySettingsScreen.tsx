@@ -533,7 +533,6 @@ const styles = StyleSheet.create({
   },
   categoryRow: {
     minHeight: 64,
-    borderWidth: 1,
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     flexDirection: 'row',
@@ -552,7 +551,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   categoryMeta: {
     fontSize: typography.caption,

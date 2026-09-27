@@ -23,7 +23,8 @@ investment values.
   platform adapters.
 - `src/store`: React context that owns local state and persistence.
 - `src/components`: Reusable controls and charts.
-- `src/screens`: Home, records, capture, statistics, and settings workflows.
+- `src/screens`: Records (monthly budget + day-grouped ledger), capture,
+  statistics, and settings workflows.
 
 ## AI request path
 

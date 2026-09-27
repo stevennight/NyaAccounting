@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   detail: {
     fontSize: typography.caption,

@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.sectionTitle,
-    fontWeight: '800',
+    fontWeight: '600',
     textAlign: 'center',
   },
   message: {

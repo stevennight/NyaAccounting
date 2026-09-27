@@ -7,6 +7,7 @@ import {
 } from 'react';
 import {
   Alert,
+  AppState,
   PermissionsAndroid,
   Platform,
   Pressable,
@@ -34,6 +35,9 @@ import {
   saveApiKey,
   type ReasoningEffortSupport,
   isCurrentScreenCaptureEnabled,
+  getCurrentScreenCaptureState,
+  isCurrentScreenCaptureNotificationEnabled,
+  type ScreenCaptureServiceState,
   isGitHubReleaseNewer,
   openCurrentScreenCaptureSettings,
   showCurrentScreenCaptureNotification,
@@ -271,7 +275,9 @@ export function SettingsScreen({
     tone: 'info' | 'success' | 'warning' | 'danger';
     message: string;
   } | null>(null);
-  const [screenCaptureEnabled, setScreenCaptureEnabled] = useState(false);
+  const [screenCaptureState, setScreenCaptureState] =
+    useState<ScreenCaptureServiceState>('disabled');
+  const screenCaptureEnabled = screenCaptureState === 'running';
   const [captureNotificationEnabled, setCaptureNotificationEnabled] =
     useState(false);
   const [overlayPermissionGranted, setOverlayPermissionGranted] = useState(false);
@@ -325,14 +331,18 @@ export function SettingsScreen({
     if (Platform.OS !== 'android') {
       return;
     }
-    const [serviceEnabled, overlayAllowed, running, pendingCount] =
+    const [serviceState, notificationOn, overlayAllowed, running, pendingCount] =
       await Promise.all([
-        isCurrentScreenCaptureEnabled().catch(() => false),
+        getCurrentScreenCaptureState().catch(
+          () => 'disabled' as ScreenCaptureServiceState,
+        ),
+        isCurrentScreenCaptureNotificationEnabled().catch(() => false),
         isScreenCaptureOverlayPermissionGranted().catch(() => false),
         isScreenCaptureOverlayRunning().catch(() => false),
         getPendingScreenCaptureCount().catch(() => 0),
       ]);
-    setScreenCaptureEnabled(serviceEnabled);
+    setScreenCaptureState(serviceState);
+    setCaptureNotificationEnabled(notificationOn);
     setOverlayPermissionGranted(overlayAllowed);
     setOverlayRunning(running);
     setPendingScreenshotCount(pendingCount);
@@ -343,6 +353,14 @@ export function SettingsScreen({
       return;
     }
     void refreshScreenCaptureStatus();
+    // Returning from the system accessibility/overlay settings should show
+    // the new state without a manual refresh.
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void refreshScreenCaptureStatus();
+      }
+    });
+    return () => subscription.remove();
   }, [refreshScreenCaptureStatus, section]);
 
   useEffect(() => {
@@ -625,7 +643,9 @@ export function SettingsScreen({
   const handleShowScreenCaptureNotification = async () => {
     try {
       const enabled = await isCurrentScreenCaptureEnabled();
-      setScreenCaptureEnabled(enabled);
+      if (!enabled) {
+        void refreshScreenCaptureStatus();
+      }
       if (!enabled) {
         setNotice({
           tone: 'warning',
@@ -649,7 +669,7 @@ export function SettingsScreen({
       setCaptureNotificationEnabled(true);
       setNotice({
         tone: 'success',
-        message: '通知栏截图按钮已开启。截图不会自动打开应用，完成后点“打开待录账单”。',
+        message: '通知栏截图按钮已开启。点“截图记账”会截取当前页面并直接打开识别。',
       });
     } catch (error) {
       setNotice({
@@ -705,7 +725,7 @@ export function SettingsScreen({
       setCaptureNotificationEnabled(true);
       setNotice({
         tone: 'success',
-        message: '悬浮球已开启。点击悬浮球只会截图，不会打断当前页面；完成后从通知栏打开待录账单。',
+        message: '悬浮球已开启。点击悬浮球只会截图，不会打断当前页面；连拍完成后从通知栏点“录入”。',
       });
     } catch (error) {
       setNotice({
@@ -1411,16 +1431,24 @@ export function SettingsScreen({
           />
           <InlineNotice
             theme={theme}
-            tone={screenCaptureEnabled ? 'success' : 'warning'}
+            tone={
+              screenCaptureState === 'running'
+                ? 'success'
+                : screenCaptureState === 'enabled_not_running'
+                  ? 'danger'
+                  : 'warning'
+            }
             message={
-              screenCaptureEnabled
-                ? '无障碍截图服务已启用。截图只保存为本次识别的临时文件。'
-                : '首次使用需要在系统设置中启用无障碍截图服务。'
+              screenCaptureState === 'running'
+                ? '无障碍截图服务运行中。截图只保存为本次识别的临时文件。'
+                : screenCaptureState === 'enabled_not_running'
+                  ? '无障碍截图服务已开启但没有运行（系统显示“不工作”或“出现故障”）。请在系统设置中把 Nya 记账关闭后重新开启。'
+                  : '无障碍截图服务未开启。首次使用，或系统清理后台后，需要在系统设置中重新启用。'
             }
           />
           <View style={styles.buttonRow}>
             <AppButton
-              label={screenCaptureEnabled ? '刷新服务状态' : '打开系统设置'}
+              label={screenCaptureEnabled ? '无障碍设置' : '打开系统设置'}
               icon="accessibility-outline"
               onPress={() => void handleOpenScreenCaptureSettings()}
               theme={theme}
@@ -1468,10 +1496,13 @@ export function SettingsScreen({
             />
           </View>
           <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>
-            悬浮球截图只写入待录队列，不会每次打开 Nya 记账；当前待录截图 {pendingScreenshotCount} 张，完成后从通知栏点击“打开待录账单”。
+            通知栏“截图记账”：截一张，立即打开 Nya 记账识别。
           </Text>
           <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>
-            通知栏可以随时开启或关闭悬浮球。首次使用需要同时启用无障碍截图服务、通知权限和悬浮窗权限。
+            悬浮球：适合连续截多张，只写入待录队列、不打断当前页面；当前待录 {pendingScreenshotCount} 张，完成后在通知栏点“录入”。
+          </Text>
+          <Text style={[styles.settingHint, { color: theme.colors.textMuted }]}>
+            如果无障碍经常被关闭：在系统设置里关闭 Nya 记账的电池优化、允许自启动/后台运行，并在最近任务里锁定应用；不要用一键清理或“强行停止”，这两者都会让系统自动关掉无障碍服务。
           </Text>
         </View>
       ) : null}
@@ -1547,7 +1578,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   navigationList: {
-    borderWidth: 1,
     borderRadius: radii.md,
     overflow: 'hidden',
   },
@@ -1576,7 +1606,7 @@ const styles = StyleSheet.create({
   },
   navigationTitle: {
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   navigationDetail: {
     fontSize: typography.caption,
@@ -1595,7 +1625,7 @@ const styles = StyleSheet.create({
   },
   switchTitle: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   switchDetail: {
     fontSize: typography.caption,
@@ -1611,7 +1641,7 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   settingHint: {
     fontSize: typography.caption,
@@ -1633,14 +1663,13 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
   },
   dataPanel: {
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.lg,
     gap: spacing.md,
   },
   dataCount: {
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
   },
   dataDetail: {
     fontSize: typography.caption,

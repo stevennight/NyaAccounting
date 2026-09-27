@@ -19,6 +19,24 @@ class ScreenCaptureModule(
     promise.resolve(ScreenCaptureAccessibilityService.isRunning())
   }
 
+  /** "running" | "enabled_not_running" | "disabled" */
+  @ReactMethod
+  fun getAccessibilityState(promise: Promise) {
+    promise.resolve(
+      when {
+        ScreenCaptureAccessibilityService.isRunning() -> "running"
+        ScreenCaptureAccessibilityService.isEnabledInSettings(reactContext) ->
+          "enabled_not_running"
+        else -> "disabled"
+      },
+    )
+  }
+
+  @ReactMethod
+  fun isCaptureNotificationEnabled(promise: Promise) {
+    promise.resolve(ScreenCaptureStore.isNotificationEnabled(reactContext))
+  }
+
   @ReactMethod
   fun openAccessibilitySettings(promise: Promise) {
     try {

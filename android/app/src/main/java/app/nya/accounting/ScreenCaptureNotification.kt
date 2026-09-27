@@ -22,6 +22,7 @@ object ScreenCaptureNotification {
     if (!hasNotificationPermission(context)) {
       return false
     }
+    ScreenCaptureStore.setNotificationEnabled(context, true)
     refresh(context)
     return true
   }
@@ -35,27 +36,36 @@ object ScreenCaptureNotification {
     return true
   }
 
+  /** Re-posts the notification the user turned on earlier (e.g. after a reboot). */
+  fun restoreIfEnabled(context: Context) {
+    if (ScreenCaptureStore.isNotificationEnabled(context)) {
+      runCatching { refresh(context) }
+    }
+  }
+
   fun build(context: Context): Notification {
     ensureChannel(context)
     val pendingCount = ScreenCaptureStore.pendingUriCount(context)
     val overlayRunning = ScreenCaptureOverlayService.isRunning
     val contentText = when {
-      pendingCount > 0 -> "已收集 $pendingCount 张截图，点击“打开待录账单”"
-      overlayRunning -> "悬浮球已开启，点击悬浮球截图"
-      else -> "在支付宝等页面点击“截图记账”"
+      pendingCount > 0 -> "悬浮球已收集 $pendingCount 张截图，点这里开始录入"
+      overlayRunning -> "悬浮球已开启：连续截图，完成后回到这里录入"
+      else -> "在支付宝等页面点“截图记账”，截图后直接打开识别"
     }
     val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       Notification.Builder(context, CHANNEL_ID)
     } else {
       Notification.Builder(context)
     }
-    return builder
+    builder
       .setSmallIcon(R.mipmap.ic_launcher)
       .setContentTitle("Nya 记账")
       .setContentText(contentText)
       .setContentIntent(actionIntent(context, ACTION_OPEN_QUEUE, 24083))
       .setOngoing(true)
       .setCategory(Notification.CATEGORY_SERVICE)
+      // Single shot: capture the current page, then open the app to review it.
+      // Collecting several screenshots in a row is the floating bubble's job.
       .addAction(
         Notification.Action.Builder(
           null,
@@ -63,31 +73,49 @@ object ScreenCaptureNotification {
           actionIntent(context, ACTION_CAPTURE, 24082),
         ).build(),
       )
-      .addAction(
+    if (pendingCount > 0) {
+      builder.addAction(
         Notification.Action.Builder(
           null,
-          "打开待录账单",
+          "录入 $pendingCount 张",
           actionIntent(context, ACTION_OPEN_QUEUE, 24083),
         ).build(),
       )
-      .addAction(
-        Notification.Action.Builder(
-          null,
-          if (overlayRunning) "关闭悬浮球" else "开启悬浮球",
-          actionIntent(
-            context,
-            if (overlayRunning) ACTION_STOP_OVERLAY else ACTION_START_OVERLAY,
-            24084,
-          ),
-        ).build(),
-      )
-      .build()
+    }
+    builder.addAction(
+      Notification.Action.Builder(
+        null,
+        if (overlayRunning) "关闭悬浮球" else "悬浮球连拍",
+        actionIntent(
+          context,
+          if (overlayRunning) ACTION_STOP_OVERLAY else ACTION_START_OVERLAY,
+          24084,
+        ),
+      ).build(),
+    )
+    return builder.build()
   }
 
   fun hide(context: Context) {
+    ScreenCaptureStore.setNotificationEnabled(context, false)
     context.stopService(Intent(context, ScreenCaptureOverlayService::class.java))
     context.getSystemService(NotificationManager::class.java)
       .cancel(NOTIFICATION_ID)
+  }
+
+  /** Brings Nya 记账 to the front; App.tsx then consumes pending screenshots. */
+  fun openApp(context: Context) {
+    ScreenCaptureOverlayService.stop(context)
+    refresh(context)
+    context.startActivity(
+      Intent(context, MainActivity::class.java).apply {
+        addFlags(
+          Intent.FLAG_ACTIVITY_NEW_TASK or
+            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+            Intent.FLAG_ACTIVITY_CLEAR_TOP,
+        )
+      },
+    )
   }
 
   private fun actionIntent(context: Context, action: String, requestCode: Int): PendingIntent =

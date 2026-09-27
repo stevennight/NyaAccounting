@@ -1015,7 +1015,7 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   amountRow: {
     flexDirection: 'row',
@@ -1041,7 +1041,7 @@ const styles = StyleSheet.create({
   },
   switchTitle: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   switchDetail: {
     fontSize: typography.caption,
@@ -1054,7 +1054,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   expenseCard: {
-    borderWidth: 1,
     borderRadius: radii.md,
     padding: spacing.lg,
     gap: spacing.md,
@@ -1078,7 +1077,7 @@ const styles = StyleSheet.create({
   },
   expenseName: {
     fontSize: typography.body,
-    fontWeight: '800',
+    fontWeight: '600',
     lineHeight: 20,
   },
   expenseCategory: {
@@ -1097,7 +1096,7 @@ const styles = StyleSheet.create({
   },
   expenseAmount: {
     fontSize: typography.sectionTitle,
-    fontWeight: '900',
+    fontWeight: '600',
   },
   schedule: {
     fontSize: typography.caption,
@@ -1112,7 +1111,7 @@ const styles = StyleSheet.create({
   },
   monthlyAmount: {
     fontSize: typography.label,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   meta: {
     fontSize: typography.caption,
